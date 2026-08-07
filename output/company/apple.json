@@ -1,0 +1,525 @@
+{
+  "query": "Apple",
+  "resolved": {
+    "ticker": "AAPL",
+    "cik": "0000320193",
+    "name": "Apple Inc.",
+    "website": "https://www.apple.com/",
+    "wiki_title": "Apple",
+    "domain": "apple.com",
+    "exchanges": [
+      "NASDAQ NMS - GLOBAL MARKET",
+      "NASDAQ"
+    ],
+    "sic": "3571",
+    "sic_description": "Electronic Computers"
+  },
+  "overview": {
+    "legal_name": "Apple Inc",
+    "description": "An apple is the round, edible fruit of an apple tree. Fruit trees of the orchard or domestic apple, the most widely grown in the genus, are cultivated worldwide. The tree originated in Central Asia, where its wild ancestor, Malus sieversii, is still found. Apples have been grown for thousands of years in Eurasia before they were introduced to North America by European colonists. Apples have cultural significance in many mythologies and religions.",
+    "short_description": "Edible fruit",
+    "industry": "Technology",
+    "sector": "TECHNOLOGY",
+    "headquarters": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+    "country": "US",
+    "city": null,
+    "state": null,
+    "address": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+    "founded": null,
+    "ipo_date": "1980-12-12",
+    "employees": null,
+    "website": "https://www.apple.com/",
+    "phone": "14089961010",
+    "logo_url": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
+    "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Pink_lady_and_cross_section.jpg/330px-Pink_lady_and_cross_section.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "wikipedia_url": "https://en.wikipedia.org/wiki/Apple",
+    "currency": "USD",
+    "share_class": null,
+    "isin": null,
+    "cusip": null,
+    "figi": null,
+    "via": []
+  },
+  "financials": {
+    "market_cap": "4515147284000",
+    "enterprise_value": null,
+    "revenue": "466822988000",
+    "gross_profit": 227123003000.0,
+    "ebitda": 167959003000.0,
+    "net_income": null,
+    "eps": 8.88,
+    "diluted_eps_ttm": 8.88,
+    "book_value": 7.36,
+    "dividend_per_share": 1.05,
+    "dividend_yield": 0.0035,
+    "dividend_date": "2026-08-13",
+    "ex_dividend_date": "2026-08-10",
+    "pe_ratio": 34.84,
+    "peg_ratio": 2.457,
+    "forward_pe": 31.95,
+    "price_to_sales_ttm": 9.67,
+    "price_to_book": 42.2,
+    "ev_to_revenue": 9.77,
+    "ev_to_ebitda": 27.14,
+    "profit_margin": 0.276,
+    "operating_margin_ttm": 0.326,
+    "return_on_assets_ttm": 0.271,
+    "return_on_equity_ttm": 1.488,
+    "revenue_ttm": 466822988000.0,
+    "revenue_per_share_ttm": 31.71,
+    "quarterly_earnings_growth_yoy": 0.287,
+    "quarterly_revenue_growth_yoy": 0.164,
+    "analyst_target_price": 324.01,
+    "trailing_pe": 34.84,
+    "beta": 1.086,
+    "week_52_high": 344.57,
+    "week_52_low": 215.72,
+    "moving_average_50": 309.52,
+    "moving_average_200": 278.24,
+    "shares_outstanding": 14594180000.0,
+    "shares_float": 14569224000.0,
+    "percent_insiders": 1.647,
+    "percent_institutions": 65.948,
+    "metrics_raw": {
+      "Symbol": "AAPL",
+      "AssetType": "Common Stock",
+      "Name": "Apple Inc.",
+      "Description": "Apple Inc. is an American multinational technology company that specializes in consumer electronics, computer software, and online services. Apple is the world's largest technology company by revenue (totalling $274.5 billion in 2020) and, since January 2021, the world's most valuable company. As of 2021, Apple is the world's fourth-largest PC vendor by unit sales, and fourth-largest smartphone manufacturer. It is one of the Big Five American information technology companies, along with Amazon, Google, Microsoft, and Facebook.",
+      "CIK": "320193",
+      "Exchange": "NASDAQ",
+      "Currency": "USD",
+      "Country": "USA",
+      "Sector": "TECHNOLOGY",
+      "Industry": "CONSUMER ELECTRONICS",
+      "Address": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+      "OfficialSite": "https://www.apple.com",
+      "FiscalYearEnd": "September",
+      "LatestQuarter": "2026-06-30",
+      "MarketCapitalization": "4515147284000",
+      "EBITDA": "167959003000",
+      "PERatio": "34.84",
+      "PEGRatio": "2.457",
+      "BookValue": "7.36",
+      "DividendPerShare": "1.05",
+      "DividendYield": "0.0035",
+      "EPS": "8.88",
+      "RevenuePerShareTTM": "31.71",
+      "ProfitMargin": "0.276",
+      "OperatingMarginTTM": "0.326",
+      "ReturnOnAssetsTTM": "0.271",
+      "ReturnOnEquityTTM": "1.488",
+      "RevenueTTM": "466822988000",
+      "GrossProfitTTM": "227123003000",
+      "DilutedEPSTTM": "8.88",
+      "QuarterlyEarningsGrowthYOY": "0.287",
+      "QuarterlyRevenueGrowthYOY": "0.164",
+      "AnalystTargetPrice": "324.01",
+      "AnalystRatingStrongBuy": "6",
+      "AnalystRatingBuy": "22",
+      "AnalystRatingHold": "14",
+      "AnalystRatingSell": "2",
+      "AnalystRatingStrongSell": "2",
+      "TrailingPE": "34.84",
+      "ForwardPE": "31.95",
+      "10DayAverageTradingVolume": 64.5683,
+      "13WeekPriceReturnDaily": 12.3433,
+      "26WeekPriceReturnDaily": 20.412,
+      "3MonthADReturnStd": 31.690624,
+      "3MonthAverageTradingVolume": 53.54025,
+      "52WeekHigh": 344.5699,
+      "52WeekHighDate": "2026-07-29",
+      "52WeekLow": 202.16,
+      "52WeekLowDate": "2025-08-05",
+      "52WeekPriceReturnDaily": 53.2624,
+      "5DayPriceReturnDaily": -6.727,
+      "assetTurnoverAnnual": 1.1584,
+      "assetTurnoverTTM": 1.2508,
+      "beta": 1.0819752,
+      "bookValuePerShareAnnual": 4.991,
+      "bookValuePerShareQuarterly": 7.3599,
+      "bookValueShareGrowth5Y": 5.34,
+      "capexCagr5Y": 11.71,
+      "cashFlowPerShareAnnual": 6.6855,
+      "cashFlowPerShareQuarterly": 9.3561,
+      "cashFlowPerShareTTM": 6.86253,
+      "cashPerSharePerShareAnnual": 3.7024,
+      "cashPerSharePerShareQuarterly": 4.2713,
+      "currentDividendYieldTTM": 0.3461,
+      "currentEv/freeCashFlowAnnual": 46.2086,
+      "currentEv/freeCashFlowTTM": 33.3903,
+      "currentRatioAnnual": 0.8933,
+      "currentRatioQuarterly": 1.0033,
+      "dividendGrowthRate5Y": 4.95,
+      "dividendIndicatedAnnual": 1.08,
+      "dividendPerShareAnnual": 1.0318,
+      "dividendPerShareTTM": 1.0616,
+      "dividendYieldIndicatedAnnual": 0.34726688102893893,
+      "ebitdPerShareAnnual": 9.6468,
+      "ebitdPerShareTTM": 11.365,
+      "ebitdaCagr5Y": 13.35,
+      "ebitdaInterimCagr5Y": 7.67,
+      "enterpriseValue": 4563889.5,
+      "epsAnnual": 7.465,
+      "epsBasicExclExtraItemsAnnual": 7.465
+    },
+    "highlights": [
+      "$4,515,147,284,000 market cap",
+      "$466,822,988,000 revenue",
+      "8.88 eps",
+      "34.84 pe ratio",
+      "27.6% profit margin",
+      "0.35% dividend yield",
+      "1.09 beta"
+    ],
+    "via": []
+  },
+  "filings": [
+    {
+      "form": "10-Q",
+      "filed_at": "2026-07-31",
+      "accession_number": "0000320193-26-000020",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-07-30",
+      "accession_number": "0000320193-26-000018",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/aapl-20260730.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SD",
+      "filed_at": "2026-05-28",
+      "accession_number": "0001140361-26-023149",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126023149/ef20073373_sd.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "10-Q",
+      "filed_at": "2026-05-01",
+      "accession_number": "0000320193-26-000013",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-04-30",
+      "accession_number": "0000320193-26-000011",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-04-20",
+      "accession_number": "0001140361-26-015711",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-02-24",
+      "accession_number": "0001140361-26-006577",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/ef20060722_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "10-Q",
+      "filed_at": "2026-01-30",
+      "accession_number": "0000320193-26-000006",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-01-29",
+      "accession_number": "0000320193-26-000005",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000005/aapl-20260129.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "DEFA14A",
+      "filed_at": "2026-01-08",
+      "accession_number": "0001308179-26-000009",
+      "title": "DEFINITIVE ADDITIONAL PROXY SOLICITING MATERIALS",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000130817926000009/aapl014016-defa14a.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "DEF 14A",
+      "filed_at": "2026-01-08",
+      "accession_number": "0001308179-26-000008",
+      "title": "DEFINITIVE PROXY STATEMENT",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000130817926000008/aapl014016-def14a.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-01-02",
+      "accession_number": "0001140361-26-000199",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126000199/ef20060722_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SCHEDULE 13G",
+      "filed_at": "2026-04-29",
+      "accession_number": "0002100119-26-000139",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000210011926000139/xslSCHEDULE_13G_X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SCHEDULE 13G/A",
+      "filed_at": "2026-03-26",
+      "accession_number": "0000102909-26-000630",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000010290926000630/xslSCHEDULE_13G_X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "PX14A6G",
+      "filed_at": "2026-01-22",
+      "accession_number": "0001096906-26-000136",
+      "title": "NATIONAL LEGAL AND POLICY CENTER - PX14A6G",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000109690626000136/nlpc_px14a6g.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "25-NSE",
+      "filed_at": "2025-11-14",
+      "accession_number": "0001354457-25-001138",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000135445725001138/xslF25X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "144/A",
+      "filed_at": "2025-10-02",
+      "accession_number": "0001959173-25-006313",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000195917325006313/xsl144X01/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-06-17",
+      "accession_number": "0001140361-26-025622",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126025622/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-06-17",
+      "accession_number": "0001140361-26-025620",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126025620/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-05-29",
+      "accession_number": "0001140361-26-023363",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126023363/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    }
+  ],
+  "news": {
+    "digest_summary": null,
+    "lookback_days": 3,
+    "articles": [
+      {
+        "title": "Experts weigh in on Apple smart glasses privacy concerns",
+        "summary": "Experts give verdict on rumoured Apple smart glasses – 'covert spy tech for creeps and spooks' . Apple could be the next major technology company to launch AI-equipped glasses, following in the footsteps of Meta and Snapchat parent company, Snap Inc",
+        "content": "Experts give verdict on rumoured Apple smart glasses – 'covert spy tech for creeps and spooks' . Apple could be the next major technology company to launch AI-equipped glasses, following in the footsteps of Meta and Snapchat parent company, Snap Inc",
+        "url": "https://www.gbnews.com/tech/apple-smart-glasses-meta-privacy-concerns",
+        "source_name": "GB News",
+        "published_at": "2026-08-06T05:01:02Z",
+        "via": [
+          "gnews"
+        ]
+      },
+      {
+        "title": "Apple's Search for Cheaper Memory Just Hit a Wall",
+        "summary": "This article first appeared on GuruFocus. Apple Inc. (AAPL, Financials), the consumer technology company, reportedly failed to secure cheaper memory chips from Chinese manufacturer CXMT as tight global supply continued to strengthen producers' pricing power. …",
+        "content": "Apple's Search for Cheaper Memory Just Hit a Wall This article first appeared on GuruFocus. Apple Inc. (AAPL, Financials), the consumer technology company, reportedly failed to secure cheaper memory chips from Chinese manufacturer CXMT as tight global supply continued to strengthen producers' pricing power. Apple negotiated prices for…",
+        "url": "https://biztoc.com/x/0af17dac0f27bf74",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-05T18:43:33Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple opens lottery for retail staff to support first iPhone event under new CEO John Ternus",
+        "summary": "Apple is preparing for its biggest product event of the year by opening a lottery that gives U.S. retail employees a chance to help staff… The post Apple opens lottery for retail staff to support first iPhone event under new CEO John Ternus appeared first on …",
+        "content": "Apple is preparing for its biggest product event of the year by opening a lottery that gives U.S. retail employees a chance to help staff… The post Apple opens lottery for retail staff to support first iPhone event under new CEO John Ternus appeared first on …",
+        "url": "https://macdailynews.com/2026/08/05/apple-opens-lottery-for-retail-staff-to-support-first-iphone-event-under-new-ceo-john-ternus/",
+        "source_name": "Macdailynews.com",
+        "published_at": "2026-08-05T14:00:15Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple's Quarterly iPhone Sales Were Even Better Than They Seem",
+        "summary": "Apple's (NASDAQ: AAPL) flagship iPhone business was nothing less than stellar in its recently reported fiscal third quarter. Revenue of $54.25 billion was not only up nearly 22% but also topped analysts' expectations of $53.86 billion. The iPhone also led a c…",
+        "content": "Apple's Quarterly iPhone Sales Were Even Better Than They Seem Apple's (NASDAQ: AAPL) flagship iPhone business was nothing less than stellar in its recently reported fiscal third quarter. Revenue of $54.25 billion was not only up nearly 22% but also topped analysts' expectations of $53.86 billion. The iPhone also led a companywide beat of Q3…",
+        "url": "https://biztoc.com/x/e35c1e09b375e097",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-05T10:36:48Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple gears up for September iPhone launch with retail employee lottery",
+        "summary": "With Apple Inc gearing up for its biggest product launch of the year, the company is opening a lottery for US retail employees who want to help staff the in-person unveiling.",
+        "content": "Stay signed in to save the points you've earned. Click on the points to redeem your rewards at Nexus before they expire. With Apple Inc gearing up for its biggest product launch of the year, the company is opening a lottery for US retail employees who want to help staff the in-person unveiling. The lottery allows retail employees to apply to work the event, where they’ll help organise lines, check in guests, greet attendees, offer directions and support the security teams, according to a memo that was seen by Bloomberg News. The launch event will take place during the first half of September, the company told staff, without providing a more specific date. Historically, Apple’s iPhone presentations have taken place on the second Tuesday or Wednesday of that month. Since Labour Day in the US falls on Monday, Sept 7, a Wednesday event appears slightly more likely, as it would preserve the workday travel window Apple has historically provided for attendees. In the memo, Apple said it was \"excited to offer US store team members the opportunity to participate in the Event Support Experience Program.” A spokesperson for the Cupertino, California-based company declined to comment. Apple has relied on retail employees to help staff major product launches for years. Workers who participated in either this year’s Worldwide Developers Conference or last year’s iPhone launch aren’t eligible for the upcoming program. Interested employees must apply by Aug 8, and Apple will notify those selected by Aug 17, according to the memo. This year’s September event carries added significance. It will be the first major product unveiling under Chief Executive Officer John Ternus, who is set to take over from Tim Cook on Sept 1. The company is expected to unveil its first foldable iPhone – as well as the iPhone 18 ...",
+        "url": "https://www.thestar.com.my/tech/tech-news/2026/08/05/apple-gears-up-for-september-iphone-launch-with-retail-employee-lottery",
+        "source_name": "The Star",
+        "published_at": "2026-08-05T04:30:00Z",
+        "via": [
+          "gnews"
+        ]
+      },
+      {
+        "title": "OpenAI publicly pushes back against Apple lawsuit after new filing",
+        "summary": "OpenAI Group PBC has publicly pushed back against a lawsuit that Apple Inc. filed against it last month. The ChatGPT developer outlined its arguments in a blog post published on Monday. The move came shortly after Apple submitted a new court filing in connect…",
+        "content": "You are using an outdated browser. Please upgrade your browser to improve your experience. OpenAI Group PBC has publicly pushed back against a lawsuit that Apple Inc. filed against it last month. The ChatGPT developer outlined its arguments in a blog post published on Monday. The move came shortly after Apple submitted a new court filing in connection with its litigation. In the document, the company asks the court for expedited evidence collection and a preliminary injunction against OpenAI. Apple filed its lawsuit last month. The complaint accuses OpenAI of stealing intellectual property from the iPhone maker to support its push into the consumer electronics market. According to recent reports , OpenAI plans to launch a line of AI-powered devices that will compete with the iPhone. The ChatGPT developer’s Monday blog post takes aim at several of the core arguments in the lawsuit. Notably, the company also published correspondence between its employees and Apple staffers. OpenAI says that the chat logs and emails weaken the iPhone maker’s arguments. The lawsuit accuses former Apple engineer Chang Liu of failing to return a company laptop before leaving for OpenAI. Furthermore, Apple claims that Liu downloaded dozens of internal files with sensitive product information. The complaint alleges that he accessed the files using a “rare, previously unknown authentication bug.” According to OpenAI’s blog post, the iPhone maker “now tries to shift the blame to ‘residual access.’” That’s a term for access permissions left active by accident. OpenAI claims that such permissions are a common issue at Apple. The lawsuit also names a second former Apple employee as a plaintiff. Tang Tan was the company’s vice president of product design before joining OpenAI last year. According to the complaint, Tan asked former Apple staffers to bring internal component prototypes to job interviews. OpenAI pushed ...",
+        "url": "https://siliconangle.com/2026/08/04/openai-publicly-pushes-back-apple-lawsuit-new-filing/",
+        "source_name": "SiliconANGLE News",
+        "published_at": "2026-08-04T23:01:37Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple Is Down 10%. Should Investors Buy the Dip?",
+        "summary": "Despite reporting record earnings per share and beating Wall Street estimates, Apple (NASDAQ: AAPL) stock fell hard after reporting its fiscal third-quarter 2026 results on July 30. Apple shares fell as much as 10% in the sell-off. So what triggered the inves…",
+        "content": "Apple Is Down 10%. Should Investors Buy the Dip? Should Investors Buy the Dip? finance.yahoo.com/markets/stocks/articles/apple-down-10-investors-buy-163500601.html Despite reporting record earnings per share and beating Wall Street estimates, Apple (NASDAQ: AAPL) stock fell hard after reporting its fiscal third-quarter 2026 results on July 30. Apple shares fell as much as 10% in the sell-off. So what triggered the investor negativity, and is this an…",
+        "url": "https://biztoc.com/x/833c5ae900d1e25b",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-04T16:56:36Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple vs. Alphabet: The $5 Trillion AI Bet That’s Renting, Not Building",
+        "summary": "Apple (NASDAQ:AAPL) touched a $5 trillion market cap last week before its fiscal third quarter report landed on July 30. You are watching a stock that spent...",
+        "content": "private How to apply FAFSA 2026-27 Student loan assistance Personal loans Best personal loans Improve credit score How to get approved Videos Watch Now Latest Editor's picks Trending stocks Investing insights Live shows Morning Brief Opening Bid Market Catalysts Market Domination Market Domination Overtime Asking for a Trend The Daily Wolf Weekly shows Power Players Trader Talk ETF Report ... Network U.S. markets open in 8h 43m US Markets US Markets Europe Markets Asia Markets Cryptocurrencies Rates Commodities Currencies U.S. markets open in 8h 43m S&P Futures 7,731.00 -3.75 -0.05% Dow Futures 53,894.00 -119.00 -0.22% Nasdaq Futures 29,503.25 +15.00 +0.05% Russell 2000 Futures 3,004.00 -5.10 -0.17% VIX 15.15 -0.66 -4.17% Gold 4,325.70 +26.10 +0.61% ADVERTISEMENT Apple vs. Alphabet: The $5 Trillion AI Bet That’s Renting, Not Building Insider Monkey Team Tue, August 4, 2026 at 10:24 PM GMT+5:30 4 min read AAPL GOOG Apple (NASDAQ:AAPL) touched a $5 trillion market cap last week before its fiscal third quarter report landed on July 30. You are watching a stock that spent much of last year lagging the AI trade suddenly leading it, and the reason comes down to how Apple chose to play the AI buildout differently than everyone else. Apple's fiscal third quarter revenue grew 16% year over year to $109.4 billion, a June quarter record, and earnings per share rose 29% to $2.02, though about $0.11 of that came from a tariff refund rather than underlying operations. iPhone revenue hit a June quarter record of $54.3 billion, up 22%, still powered by the iPhone 17 lineup. Shares still fell about 10% after the report, as investors focused on September quarter guidance of just 9% to 11% growth, below the 12% Wall Street had modeled, and on supply constraints Apple said would worsen. The call also marked Tim Cook's last ...",
+        "url": "https://finance.yahoo.com/markets/stocks/articles/apple-vs-alphabet-5-trillion-165422171.html",
+        "source_name": "Yahoo Entertainment",
+        "published_at": "2026-08-04T16:54:22Z",
+        "via": [
+          "newsapi"
+        ]
+      }
+    ]
+  },
+  "press": [],
+  "github": {
+    "org": {
+      "login": null,
+      "name": null,
+      "html_url": null,
+      "description": null,
+      "blog": null,
+      "location": null,
+      "public_repos": null,
+      "followers": null
+    },
+    "repos": []
+  },
+  "sources_status": {
+    "finnhub": {
+      "ok": true,
+      "error": null
+    },
+    "alpha_vantage": {
+      "ok": true,
+      "error": null
+    },
+    "sec_edgar": {
+      "ok": true,
+      "error": null
+    },
+    "wikipedia": {
+      "ok": true,
+      "error": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key"
+    },
+    "rss": {
+      "ok": false,
+      "error": "no_feed_found"
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null
+    },
+    "gnews": {
+      "ok": true,
+      "error": null
+    }
+  },
+  "meta": {
+    "generated_at": "2026-08-07T04:45:58.785997+00:00",
+    "raw_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\raw\\apple.json",
+    "company_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\company\\apple.json"
+  }
+}

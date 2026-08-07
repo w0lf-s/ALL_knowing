@@ -1,0 +1,409 @@
+from __future__ import annotations
+
+import asyncio
+import html
+import os
+import re
+import unicodedata
+from typing import Any
+
+import httpx
+
+from src.schema import NewsArticle
+
+_CHROME_PHRASES = (
+    "skip to navigation",
+    "skip to main content",
+    "skip to right column",
+    "biztoc menu",
+    "login / sign up",
+    "customize news grid",
+    "gpt plugin",
+    "light mode imagery",
+    "settings & dark mode",
+    "the entire business world on a single page",
+    "we've received your inquiry",
+    "a specialist will reach out",
+    "for more information please view the barchart disclosure",
+    "all information and data in this article is solely for informational purposes",
+    "world politics tech business",
+    "tabloid sports science health",
+    "entertainment lifestyle food travel gaming",
+)
+
+_ENTITY_RE = re.compile(r"&#\d+;|&#x[0-9a-fA-F]+;|&[a-zA-Z]+;")
+_ARROW_SPLIT = re.compile(r"\s*-->\s*")
+_MULTI_SPACE = re.compile(r"[ \t\f\v]+")
+_MULTI_NL = re.compile(r"\n{3,}")
+
+
+def sanitize_news_text(text: str | None, *, strip_chrome: bool = True) -> str | None:
+    if text is None:
+        return None
+    raw = str(text)
+    if not raw.strip():
+        return None
+
+    out = raw
+    for _ in range(3):
+        nxt = html.unescape(out)
+        if nxt == out:
+            break
+        out = nxt
+    out = _ENTITY_RE.sub(" ", out)
+
+    out = (
+        out.replace("\xa0", " ")
+        .replace("\u202f", " ")
+        .replace("\u2007", " ")
+        .replace("\u2009", " ")
+        .replace("\u200a", " ")
+        .replace("\u200b", "")
+        .replace("\u200c", "")
+        .replace("\u200d", "")
+        .replace("\ufeff", "")
+        .replace("\u2060", "")
+        .replace("\u2190", "")
+        .replace("\u2191", "")
+        .replace("\u2192", "")
+        .replace("\u2193", "")
+        .replace("\u21a0", "")
+        .replace("\u21d2", "")
+        .replace("\u205e", " ")
+        .replace("\u2022", " ")
+        .replace("\u00b7", " ")
+        .replace("\ufffd", "")
+    )
+
+    cleaned_chars: list[str] = []
+    for ch in out:
+        cat = unicodedata.category(ch)
+        if cat in ("Cc", "Cf", "Co", "Cs"):
+            if ch in ("\n", "\t"):
+                cleaned_chars.append(" ")
+            continue
+        if cat.startswith("S") and ord(ch) > 0x2FFF:
+            continue
+        if 0xE000 <= ord(ch) <= 0xF8FF or 0xF0000 <= ord(ch) <= 0xFFFFD:
+            continue
+        cleaned_chars.append(ch)
+    out = "".join(cleaned_chars)
+
+    if strip_chrome:
+        chunks = _ARROW_SPLIT.split(out)
+        kept: list[str] = []
+        for chunk in chunks:
+            low = chunk.lower()
+            if any(p in low for p in _CHROME_PHRASES):
+                sentences = re.split(r"(?<=[.!?])\s+", chunk)
+                good = []
+                for s in sentences:
+                    sl = s.lower()
+                    if any(p in sl for p in _CHROME_PHRASES):
+                        continue
+                    if re.search(
+                        r"\b(menu|sign up|rss feed|facebook|bluesky|x/twitter|newsletter)\b",
+                        sl,
+                    ) and len(s.split()) < 25:
+                        continue
+                    good.append(s)
+                chunk = " ".join(good).strip()
+            if chunk:
+                kept.append(chunk)
+        out = "\n\n".join(kept) if kept else out
+
+        lines = []
+        for line in out.splitlines():
+            low = line.lower().strip()
+            if not low:
+                lines.append("")
+                continue
+            if any(p in low for p in _CHROME_PHRASES):
+                continue
+            if low.startswith("this story appeared on "):
+                continue
+            lines.append(line)
+        out = "\n".join(lines)
+        out = re.sub(
+            r"(?i)\bthis story appeared on\s+[a-z0-9.-]+(?:\s*,\s*[0-9T:\-+Z.\s]+)?\.?",
+            " ",
+            out,
+        )
+        out = re.sub(r"(?i)\bfree\s+to\s+use\b\.?", " ", out)
+        out = re.sub(r"(?i)\bx/twitter\b|\bbluesky\b|\brss feed\b", " ", out)
+
+    out = _MULTI_SPACE.sub(" ", out)
+    out = _MULTI_NL.sub("\n\n", out)
+    out = "\n".join(ln.strip() for ln in out.splitlines())
+    out = out.strip()
+    return out or None
+
+
+def sanitize_article_fields(article: dict[str, Any]) -> dict[str, Any]:
+    item = dict(article)
+    if item.get("title") is not None:
+        item["title"] = sanitize_news_text(str(item["title"]), strip_chrome=False)
+    if item.get("summary") is not None:
+        item["summary"] = sanitize_news_text(str(item["summary"]), strip_chrome=False)
+    if item.get("content") is not None:
+        item["content"] = sanitize_news_text(str(item["content"]), strip_chrome=True)
+    if item.get("content"):
+        words = str(item["content"]).split()
+        chrome_hits = sum(1 for p in _CHROME_PHRASES if p in str(item["content"]).lower())
+        if chrome_hits >= 2 and len(words) < 80:
+            item["content"] = None
+        elif len(words) < 25 and item.get("summary"):
+            item["content"] = sanitize_news_text(str(item["summary"]), strip_chrome=True)
+    return item
+
+
+EXTRACT_JS = """() => {
+  const junk = new Set(['nav','footer','aside','script','style','noscript','iframe','form','header','button','svg']);
+  const selectors = [
+    '[itemprop="articleBody"]',
+    'article .article-body',
+    'article .story-body',
+    'article .post-content',
+    'article .entry-content',
+    '.article-content',
+    '.story-content',
+    '.post-content',
+    '.entry-content',
+    '[class*="article-body"]',
+    '[class*="ArticleBody"]',
+    'article',
+    'main',
+  ];
+
+  function clean(root) {
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll('*').forEach((n) => {
+      const tag = (n.tagName || '').toLowerCase();
+      if (junk.has(tag)) n.remove();
+      const cls = (n.className && typeof n.className === 'string') ? n.className.toLowerCase() : '';
+      if (cls.includes('newsletter') || cls.includes('related') || cls.includes('share') || cls.includes('promo') || cls.includes('advert')) {
+        n.remove();
+      }
+    });
+    return clone;
+  }
+
+  function fromParagraphs(root) {
+    const ps = Array.from(root.querySelectorAll('p'))
+      .map((p) => (p.innerText || '').trim())
+      .filter((t) => t.length > 40);
+    if (ps.length >= 2) return ps.join('\\n\\n');
+    return null;
+  }
+
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (!el) continue;
+    const cleaned = clean(el);
+    const para = fromParagraphs(cleaned);
+    if (para && para.split(/\\s+/).length >= 60) return para;
+    const text = (cleaned.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
+    if (text && text.split(/\\s+/).length >= 60) return text;
+  }
+
+  const body = clean(document.body);
+  const para = fromParagraphs(body);
+  if (para && para.split(/\\s+/).length >= 40) return para;
+  const text = (body.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
+  return text && text.split(/\\s+/).length >= 40 ? text : null;
+}"""
+
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+
+
+def clip_words(text: str, max_words: int = 300) -> str:
+    cleaned = sanitize_news_text(text, strip_chrome=True) or ""
+    words = cleaned.split()
+    if len(words) <= max_words:
+        return cleaned.strip()
+    return " ".join(words[:max_words]).strip() + " ..."
+
+
+def needs_content(articles: list[dict[str, Any]]) -> bool:
+    if not articles:
+        return False
+    return any(not (a.get("content") or "").strip() for a in articles[:8])
+
+
+def _html_to_text(html_src: str) -> str | None:
+    html_src = re.sub(r"(?is)<(script|style|noscript|svg|iframe)[^>]*>.*?</\1>", " ", html_src)
+    parts = re.findall(r"(?is)<p[^>]*>(.*?)</p>", html_src)
+    texts: list[str] = []
+    for part in parts:
+        t = re.sub(r"(?is)<[^>]+>", " ", part)
+        t = sanitize_news_text(t, strip_chrome=True) or ""
+        if len(t) > 40:
+            texts.append(t)
+    if len(texts) >= 2:
+        return "\n\n".join(texts)
+    plain = re.sub(r"(?is)<[^>]+>", " ", html_src)
+    plain = sanitize_news_text(plain, strip_chrome=True)
+    if plain and len(plain.split()) >= 40:
+        return plain
+    return None
+
+
+async def _fetch_content_http(url: str) -> str | None:
+    try:
+        async with httpx.AsyncClient(
+            timeout=20.0,
+            follow_redirects=True,
+            headers={"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"},
+        ) as client:
+            resp = await client.get(url)
+            if resp.status_code >= 400:
+                return None
+            return _html_to_text(resp.text)
+    except Exception:
+        return None
+
+
+def pick_best_articles(articles: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+    with_body: list[dict[str, Any]] = []
+    without: list[dict[str, Any]] = []
+    for a in articles:
+        item = sanitize_article_fields(a)
+        if (item.get("content") or "").strip():
+            with_body.append(item)
+        else:
+            without.append(item)
+    return (with_body + without)[:limit]
+
+
+async def enrich_articles(
+    articles: list[dict[str, Any]],
+    *,
+    top_n: int | None = None,
+    enabled: bool = True,
+) -> list[dict[str, Any]]:
+    n = top_n if top_n is not None else int(os.getenv("NEWS_ENRICH_TOP_N", "8"))
+    selected = [dict(a) for a in articles[: max(n, 24)]]
+    if not enabled or not selected:
+        return [sanitize_article_fields(a) for a in selected[:n]]
+
+    browser = None
+    context = None
+    sem = asyncio.Semaphore(2)
+    timeout_ms = 45000
+
+    try:
+        from playwright.async_api import async_playwright
+    except Exception:
+        async_playwright = None
+
+    async def fill_one(item: dict[str, Any], page_factory) -> dict[str, Any]:
+        item = sanitize_article_fields(item)
+        url = item.get("url")
+        if not url:
+            return item
+        if (item.get("content") or "").strip():
+            clipped = clip_words(str(item["content"]), 300)
+            item["content"] = clipped or None
+            return sanitize_article_fields(item)
+
+        body = None
+        title = None
+        if page_factory is not None:
+            async with sem:
+                page = await page_factory()
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(800)
+                    try:
+                        await page.wait_for_selector(
+                            "article p, [itemprop='articleBody'] p, main p, .article-body p, .post-content p",
+                            timeout=6000,
+                        )
+                    except Exception:
+                        pass
+                    title = await page.evaluate(
+                        """() => {
+                          const og = document.querySelector('meta[property="og:title"]');
+                          if (og && og.content) return og.content.trim();
+                          const h1 = document.querySelector('h1');
+                          if (h1 && h1.innerText) return h1.innerText.trim();
+                          return document.title || null;
+                        }"""
+                    )
+                    body = await page.evaluate(EXTRACT_JS)
+                except Exception:
+                    body = None
+                finally:
+                    await page.close()
+
+        if body:
+            body = sanitize_news_text(str(body), strip_chrome=True)
+        if not body or len(str(body).split()) < 40:
+            body = await _fetch_content_http(url)
+
+        if title and (not item.get("title") or len(str(title)) > 5):
+            item["title"] = sanitize_news_text(str(title), strip_chrome=False)
+        if body and len(str(body).split()) >= 40:
+            item["content"] = clip_words(str(body), 300) or None
+        elif item.get("summary") and len(str(item.get("summary")).split()) >= 20:
+            item["content"] = clip_words(str(item["summary"]), 300) or None
+        else:
+            item["content"] = None
+        return sanitize_article_fields(item)
+
+    if async_playwright is None:
+        out = []
+        for item in selected:
+            out.append(await fill_one(item, None))
+        return pick_best_articles(out, n)
+
+    async with async_playwright() as p:
+        try:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent=UA,
+                viewport={"width": 1366, "height": 768},
+                locale="en-US",
+            )
+
+            async def new_page():
+                return await context.new_page()
+
+            out = list(await asyncio.gather(*[fill_one(a, new_page) for a in selected]))
+        except Exception:
+            out = []
+            for item in selected:
+                out.append(await fill_one(item, None))
+        finally:
+            if context is not None:
+                await context.close()
+            if browser is not None:
+                await browser.close()
+
+    return pick_best_articles(out, n)
+
+
+def articles_to_models(articles: list[dict[str, Any]]) -> list[NewsArticle]:
+    out: list[NewsArticle] = []
+    for a in articles:
+        a = sanitize_article_fields(a)
+        out.append(
+            NewsArticle(
+                title=a.get("title"),
+                summary=a.get("summary"),
+                content=a.get("content"),
+                url=a.get("url"),
+                source_name=a.get("source_name"),
+                published_at=a.get("published_at"),
+                via=list(a.get("via") or []),
+            )
+        )
+    return out

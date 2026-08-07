@@ -1,0 +1,95 @@
+{
+  "query": "cg power",
+  "resolved": {
+    "ticker": "CGPOWER.NS",
+    "cik": null,
+    "name": "CG Power and Industrial Solutions Ltd",
+    "website": null,
+    "wiki_title": null,
+    "domain": null
+  },
+  "sources": {
+    "finnhub": {
+      "ok": false,
+      "error": "Client error '403 Forbidden' for url 'https://finnhub.io/api/v1/stock/profile2?symbol=CGPOWER.NS&token=d9pdco1r01qo4gjcuojgd9pdco1r01qo4gjcuok0'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+      "data": null
+    },
+    "wikipedia": {
+      "ok": false,
+      "error": "no_match",
+      "data": null
+    },
+    "sec_edgar": {
+      "ok": false,
+      "error": "missing_cik",
+      "data": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key",
+      "data": null
+    },
+    "rss": {
+      "ok": false,
+      "error": "missing_domain",
+      "data": null
+    },
+    "alpha_vantage": {
+      "ok": false,
+      "error": "empty_overview",
+      "data": null
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null,
+      "data": {
+        "articles": [],
+        "raw": {
+          "status": "ok",
+          "totalResults": 0,
+          "articles": []
+        }
+      }
+    },
+    "gnews": {
+      "ok": true,
+      "error": null,
+      "data": {
+        "articles": [],
+        "raw": {
+          "information": {
+            "realTimeArticles": {
+              "message": "Real-time news data is only available on paid plans. Free plan has a 12-hour delay. Upgrade your plan here to remove the delay: https://gnews.io/change-plan"
+            }
+          },
+          "articlesRemovedFromResponse": {
+            "historicalArticles": {
+              "message": "9 articles were removed from the response because historical data beyond 30 days is only available on paid plans. Upgrade your plan here to access historical data: https://gnews.io/change-plan"
+            }
+          },
+          "totalArticles": 16,
+          "articles": [
+            {
+              "id": "3ed8eb7f169e180abdc682dff047c83b",
+              "title": "CG Power statutory auditor S R B C & CO LLP to resign on Aug 14",
+              "description": "S R B C & CO LLP intends to resign as Statutory Auditor of CG Power and Industrial Solutions Ltd effective August 14, 2026. The move aligns with the auditor rotation at holding company TII, ensuring audit synergy for a subsidiary comprising over 50% of consolidated finances.",
+              "content": "CG Power and Industrial Solutions Limited has received a letter of intent to resign from its Statutory Auditor, M/s. S R B C & CO LLP (“SRBC”). The resignation is scheduled to become effective at the close of business hours on August 14, 2026, follow... [10394 chars]",
+              "url": "https://scanx.trade/stock-market-news/companies/cg-power-statutory-auditor-s-r-b-c-co-llp-to-resign-on-aug-14/46431034",
+              "image": "http://news-images.dhan.co/cg-power-statutory-auditor-s-r-b-c-co-llp-to-resign-on-aug-14.jpg",
+              "publishedAt": "2026-07-24T09:30:50Z",
+              "lang": "en",
+              "source": {
+                "id": "f746366686e467440a63dd26dbb72053",
+                "name": "scanx.trade",
+                "url": "https://scanx.trade",
+                "country": "in"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "news_articles": [],
+  "fetched_at": "2026-08-06T15:31:12.318006+00:00"
+}

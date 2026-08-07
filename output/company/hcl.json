@@ -1,0 +1,143 @@
+{
+  "query": "HCL",
+  "resolved": {
+    "ticker": "HCL.DE",
+    "cik": null,
+    "name": "HECLA MINING CO",
+    "website": null,
+    "wiki_title": "Hecla Mining Co",
+    "domain": null,
+    "exchanges": [],
+    "sic": null,
+    "sic_description": null
+  },
+  "overview": {
+    "legal_name": "HECLA MINING CO",
+    "description": "Hecla Mining Company is a gold, silver, and other precious metals mining company based in Coeur d'Alene, Idaho. Founded in 1891, it is the largest silver mining company in the United States and the 9th biggest mining company in the United States overall.",
+    "short_description": "American mining company",
+    "industry": null,
+    "sector": null,
+    "headquarters": null,
+    "country": null,
+    "city": null,
+    "state": null,
+    "address": null,
+    "founded": null,
+    "ipo_date": null,
+    "employees": null,
+    "website": null,
+    "phone": null,
+    "logo_url": null,
+    "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Hecla_Mining_logo.svg/330px-Hecla_Mining_logo.svg.png",
+    "wikipedia_url": "https://en.wikipedia.org/wiki/Hecla_Mining",
+    "currency": null,
+    "share_class": null,
+    "isin": null,
+    "cusip": null,
+    "figi": null,
+    "via": []
+  },
+  "financials": {
+    "market_cap": null,
+    "enterprise_value": null,
+    "revenue": null,
+    "gross_profit": null,
+    "ebitda": null,
+    "net_income": null,
+    "eps": null,
+    "diluted_eps_ttm": null,
+    "book_value": null,
+    "dividend_per_share": null,
+    "dividend_yield": null,
+    "dividend_date": null,
+    "ex_dividend_date": null,
+    "pe_ratio": null,
+    "peg_ratio": null,
+    "forward_pe": null,
+    "price_to_sales_ttm": null,
+    "price_to_book": null,
+    "ev_to_revenue": null,
+    "ev_to_ebitda": null,
+    "profit_margin": null,
+    "operating_margin_ttm": null,
+    "return_on_assets_ttm": null,
+    "return_on_equity_ttm": null,
+    "revenue_ttm": null,
+    "revenue_per_share_ttm": null,
+    "quarterly_earnings_growth_yoy": null,
+    "quarterly_revenue_growth_yoy": null,
+    "analyst_target_price": null,
+    "trailing_pe": null,
+    "beta": null,
+    "week_52_high": null,
+    "week_52_low": null,
+    "moving_average_50": null,
+    "moving_average_200": null,
+    "shares_outstanding": null,
+    "shares_float": null,
+    "percent_insiders": null,
+    "percent_institutions": null,
+    "metrics_raw": {},
+    "highlights": [],
+    "via": []
+  },
+  "filings": [],
+  "news": {
+    "digest_summary": null,
+    "lookback_days": 3,
+    "articles": []
+  },
+  "press": [],
+  "github": {
+    "org": {
+      "login": null,
+      "name": null,
+      "html_url": null,
+      "description": null,
+      "blog": null,
+      "location": null,
+      "public_repos": null,
+      "followers": null
+    },
+    "repos": []
+  },
+  "sources_status": {
+    "finnhub": {
+      "ok": false,
+      "error": "Client error '403 Forbidden' for url 'https://finnhub.io/api/v1/stock/profile2?symbol=HCL.DE&token=d9pdco1r01qo4gjcuojgd9pdco1r01qo4gjcuok0'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
+    },
+    "alpha_vantage": {
+      "ok": false,
+      "error": "empty_overview"
+    },
+    "sec_edgar": {
+      "ok": false,
+      "error": "missing_cik"
+    },
+    "wikipedia": {
+      "ok": true,
+      "error": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key"
+    },
+    "rss": {
+      "ok": false,
+      "error": "missing_domain"
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null
+    },
+    "gnews": {
+      "ok": true,
+      "error": null
+    }
+  },
+  "meta": {
+    "generated_at": "2026-08-06T14:22:03.972493+00:00",
+    "raw_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\raw\\hcl.json",
+    "company_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\company\\hcl.json"
+  }
+}

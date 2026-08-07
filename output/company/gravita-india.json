@@ -1,0 +1,143 @@
+{
+  "query": "Gravita India",
+  "resolved": {
+    "ticker": "GRAVITA.NS",
+    "cik": null,
+    "name": "Gravita India Ltd",
+    "website": null,
+    "wiki_title": "Grazia India",
+    "domain": null,
+    "exchanges": [],
+    "sic": null,
+    "sic_description": null
+  },
+  "overview": {
+    "legal_name": "Gravita India Ltd",
+    "description": "Grazia India is the Indian edition of the Italian women's fashion and celebrity gossip magazine Grazia. It is the 10th international edition of Grazia. The monthly magazine covers fashion, health, and current events, and is targeted at affluent urban women.",
+    "short_description": "Indian women's fashion magazine",
+    "industry": null,
+    "sector": null,
+    "headquarters": null,
+    "country": null,
+    "city": null,
+    "state": null,
+    "address": null,
+    "founded": null,
+    "ipo_date": null,
+    "employees": null,
+    "website": null,
+    "phone": null,
+    "logo_url": null,
+    "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/a/a9/Grazia_Indian_Edition_Cover.jpg",
+    "wikipedia_url": "https://en.wikipedia.org/wiki/Grazia_India",
+    "currency": null,
+    "share_class": null,
+    "isin": null,
+    "cusip": null,
+    "figi": null,
+    "via": []
+  },
+  "financials": {
+    "market_cap": null,
+    "enterprise_value": null,
+    "revenue": null,
+    "gross_profit": null,
+    "ebitda": null,
+    "net_income": null,
+    "eps": null,
+    "diluted_eps_ttm": null,
+    "book_value": null,
+    "dividend_per_share": null,
+    "dividend_yield": null,
+    "dividend_date": null,
+    "ex_dividend_date": null,
+    "pe_ratio": null,
+    "peg_ratio": null,
+    "forward_pe": null,
+    "price_to_sales_ttm": null,
+    "price_to_book": null,
+    "ev_to_revenue": null,
+    "ev_to_ebitda": null,
+    "profit_margin": null,
+    "operating_margin_ttm": null,
+    "return_on_assets_ttm": null,
+    "return_on_equity_ttm": null,
+    "revenue_ttm": null,
+    "revenue_per_share_ttm": null,
+    "quarterly_earnings_growth_yoy": null,
+    "quarterly_revenue_growth_yoy": null,
+    "analyst_target_price": null,
+    "trailing_pe": null,
+    "beta": null,
+    "week_52_high": null,
+    "week_52_low": null,
+    "moving_average_50": null,
+    "moving_average_200": null,
+    "shares_outstanding": null,
+    "shares_float": null,
+    "percent_insiders": null,
+    "percent_institutions": null,
+    "metrics_raw": {},
+    "highlights": [],
+    "via": []
+  },
+  "filings": [],
+  "news": {
+    "digest_summary": null,
+    "lookback_days": 3,
+    "articles": []
+  },
+  "press": [],
+  "github": {
+    "org": {
+      "login": null,
+      "name": null,
+      "html_url": null,
+      "description": null,
+      "blog": null,
+      "location": null,
+      "public_repos": null,
+      "followers": null
+    },
+    "repos": []
+  },
+  "sources_status": {
+    "finnhub": {
+      "ok": false,
+      "error": "empty_profile"
+    },
+    "alpha_vantage": {
+      "ok": false,
+      "error": "provider_message"
+    },
+    "sec_edgar": {
+      "ok": false,
+      "error": "missing_cik"
+    },
+    "wikipedia": {
+      "ok": true,
+      "error": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key"
+    },
+    "rss": {
+      "ok": false,
+      "error": "missing_domain"
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null
+    },
+    "gnews": {
+      "ok": true,
+      "error": null
+    }
+  },
+  "meta": {
+    "generated_at": "2026-08-06T16:01:45.401404+00:00",
+    "raw_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\raw\\gravita-india.json",
+    "company_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\output\\company\\gravita-india.json"
+  }
+}

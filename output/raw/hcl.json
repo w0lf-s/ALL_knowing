@@ -1,0 +1,141 @@
+{
+  "query": "HCL",
+  "resolved": {
+    "ticker": "HCL.DE",
+    "cik": null,
+    "name": "HECLA MINING CO",
+    "website": null,
+    "wiki_title": "Hecla Mining Co",
+    "domain": null
+  },
+  "sources": {
+    "finnhub": {
+      "ok": false,
+      "error": "Client error '403 Forbidden' for url 'https://finnhub.io/api/v1/stock/profile2?symbol=HCL.DE&token=d9pdco1r01qo4gjcuojgd9pdco1r01qo4gjcuok0'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403",
+      "data": null
+    },
+    "wikipedia": {
+      "ok": true,
+      "error": null,
+      "data": {
+        "title": "Hecla Mining Co",
+        "summary": {
+          "type": "standard",
+          "title": "Hecla Mining",
+          "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hecla Mining</span></span>",
+          "namespace": {
+            "id": 0,
+            "text": ""
+          },
+          "wikibase_item": "Q5696498",
+          "titles": {
+            "canonical": "Hecla_Mining",
+            "normalized": "Hecla Mining",
+            "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Hecla Mining</span></span>"
+          },
+          "pageid": 21689360,
+          "thumbnail": {
+            "source": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Hecla_Mining_logo.svg/330px-Hecla_Mining_logo.svg.png",
+            "width": 330,
+            "height": 216
+          },
+          "originalimage": {
+            "source": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Hecla_Mining_logo.svg/250px-Hecla_Mining_logo.svg.png",
+            "width": 240,
+            "height": 157
+          },
+          "lang": "en",
+          "dir": "ltr",
+          "revision": "1364144792",
+          "tid": "ae005729-7fbd-11f1-9c26-d0a58d2e2e31",
+          "timestamp": "2026-07-14T19:53:27Z",
+          "description": "American mining company",
+          "description_source": "local",
+          "content_urls": {
+            "desktop": {
+              "page": "https://en.wikipedia.org/wiki/Hecla_Mining",
+              "revisions": "https://en.wikipedia.org/wiki/Hecla_Mining?action=history",
+              "edit": "https://en.wikipedia.org/wiki/Hecla_Mining?action=edit",
+              "talk": "https://en.wikipedia.org/wiki/Talk:Hecla_Mining"
+            },
+            "mobile": {
+              "page": "https://en.wikipedia.org/wiki/Hecla_Mining",
+              "revisions": "https://en.wikipedia.org/wiki/Special:History/Hecla_Mining",
+              "edit": "https://en.wikipedia.org/wiki/Hecla_Mining?action=edit",
+              "talk": "https://en.wikipedia.org/wiki/Talk:Hecla_Mining"
+            }
+          },
+          "extract": "Hecla Mining Company is a gold, silver, and other precious metals mining company based in Coeur d'Alene, Idaho. Founded in 1891, it is the largest silver mining company in the United States and the 9th biggest mining company in the United States overall. This area is known as the Silver Valley (Idaho). In 1983, this entire area was designated as a Superfund site by the Environmental Protection Agency, because of land, water, and air contamination resulting from a century of mostly unregulated silver and gold mining.",
+          "extract_html": "<p><b>Hecla Mining Company</b> is a gold, silver, and other precious metals mining company based in Coeur d'Alene, Idaho. Founded in 1891, it is the largest silver mining company in the United States and the 9th biggest mining company in the United States overall. This area is known as the Silver Valley (Idaho). In 1983, this entire area was designated as a Superfund site by the Environmental Protection Agency, because of land, water, and air contamination resulting from a century of mostly unregulated silver and gold mining.</p>"
+        },
+        "search": [
+          "HECLA MINING CO",
+          [
+            "Hecla Mining Co"
+          ],
+          [
+            ""
+          ],
+          [
+            "https://en.wikipedia.org/wiki/Hecla_Mining_Co"
+          ]
+        ]
+      }
+    },
+    "sec_edgar": {
+      "ok": false,
+      "error": "missing_cik",
+      "data": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key",
+      "data": null
+    },
+    "rss": {
+      "ok": false,
+      "error": "missing_domain",
+      "data": null
+    },
+    "alpha_vantage": {
+      "ok": false,
+      "error": "empty_overview",
+      "data": null
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null,
+      "data": {
+        "articles": [],
+        "raw": {
+          "status": "ok",
+          "totalResults": 0,
+          "articles": []
+        }
+      }
+    },
+    "gnews": {
+      "ok": true,
+      "error": null,
+      "data": {
+        "articles": [],
+        "raw": {
+          "information": {
+            "realTimeArticles": {
+              "message": "Real-time news data is only available on paid plans. Free plan has a 12-hour delay. Upgrade your plan here to remove the delay: https://gnews.io/change-plan"
+            }
+          },
+          "articlesRemovedFromResponse": {
+            "historicalArticles": {
+              "message": "10 articles were removed from the response because historical data beyond 30 days is only available on paid plans. Upgrade your plan here to access historical data: https://gnews.io/change-plan"
+            }
+          },
+          "totalArticles": 10,
+          "articles": []
+        }
+      }
+    }
+  },
+  "news_articles": [],
+  "fetched_at": "2026-08-06T14:22:03.972493+00:00"
+}
