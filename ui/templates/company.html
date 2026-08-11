@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% set active = "company" %}
+{% block content %}
+<div class="search-box">
+    <h2>Company Intelligence Search</h2>
+    <form method="POST" action="/company">
+        <input type="text" name="query" placeholder="Enter company name (e.g. Apple, HCL, Tesla)" value="{{ query or '' }}" required>
+        <button type="submit">Search</button>
+    </form>
+    <div class="loading"><div class="spinner"></div><span>Fetching data from multiple sources...</span></div>
+</div>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+{% if dossier %}
+<div class="card">
+    <h3>{{ dossier.resolved.name or dossier.query }} {% if dossier.resolved.ticker %}<span style="color:#888">({{ dossier.resolved.ticker }})</span>{% endif %}</h3>
+    <table>
+        {% if dossier.overview.description %}<tr><th>Description</th><td>{{ dossier.overview.description }}</td></tr>{% endif %}
+        {% if dossier.overview.industry %}<tr><th>Industry</th><td>{{ dossier.overview.industry }}</td></tr>{% endif %}
+        {% if dossier.overview.sector %}<tr><th>Sector</th><td>{{ dossier.overview.sector }}</td></tr>{% endif %}
+        {% if dossier.overview.headquarters %}<tr><th>Headquarters</th><td>{{ dossier.overview.headquarters }}</td></tr>{% endif %}
+        {% if dossier.overview.country %}<tr><th>Country</th><td>{{ dossier.overview.country }}</td></tr>{% endif %}
+        {% if dossier.overview.website %}<tr><th>Website</th><td><a href="{{ dossier.overview.website }}" target="_blank" style="color:#a78bfa">{{ dossier.overview.website }}</a></td></tr>{% endif %}
+        {% if dossier.overview.ipo_date %}<tr><th>IPO Date</th><td>{{ dossier.overview.ipo_date }}</td></tr>{% endif %}
+        {% if dossier.overview.employees %}<tr><th>Employees</th><td>{{ dossier.overview.employees }}</td></tr>{% endif %}
+        {% if dossier.resolved.exchanges %}<tr><th>Exchange</th><td>{{ dossier.resolved.exchanges | join(', ') }}</td></tr>{% endif %}
+    </table>
+</div>
+
+{% if dossier.financials and (dossier.financials.market_cap or dossier.financials.revenue or dossier.financials.pe_ratio) %}
+<div class="card">
+    <h3>Financials</h3>
+    <table>
+        {% if dossier.financials.market_cap %}<tr><th>Market Cap</th><td>${{ "{:,.0f}".format(dossier.financials.market_cap | float) }}</td></tr>{% endif %}
+        {% if dossier.financials.revenue %}<tr><th>Revenue</th><td>${{ "{:,.0f}".format(dossier.financials.revenue | float) }}</td></tr>{% endif %}
+        {% if dossier.financials.eps %}<tr><th>EPS</th><td>{{ dossier.financials.eps }}</td></tr>{% endif %}
+        {% if dossier.financials.pe_ratio %}<tr><th>P/E Ratio</th><td>{{ dossier.financials.pe_ratio }}</td></tr>{% endif %}
+        {% if dossier.financials.profit_margin %}<tr><th>Profit Margin</th><td>{{ "%.1f" | format(dossier.financials.profit_margin * 100) }}%</td></tr>{% endif %}
+        {% if dossier.financials.dividend_yield %}<tr><th>Dividend Yield</th><td>{{ "%.2f" | format(dossier.financials.dividend_yield * 100) }}%</td></tr>{% endif %}
+        {% if dossier.financials.beta %}<tr><th>Beta</th><td>{{ dossier.financials.beta }}</td></tr>{% endif %}
+        {% if dossier.financials.week_52_high %}<tr><th>52W High</th><td>{{ dossier.financials.week_52_high }}</td></tr>{% endif %}
+        {% if dossier.financials.week_52_low %}<tr><th>52W Low</th><td>{{ dossier.financials.week_52_low }}</td></tr>{% endif %}
+    </table>
+</div>
+{% endif %}
+
+{% if dossier.news and dossier.news.articles %}
+<div class="card">
+    <h3>Recent News ({{ dossier.news.articles | length }})</h3>
+    {% for article in dossier.news.articles %}
+    <div class="news-item">
+        <h4>{% if article.url %}<a href="{{ article.url }}" target="_blank">{{ article.title or 'Untitled' }}</a>{% else %}{{ article.title or 'Untitled' }}{% endif %}</h4>
+        <div class="meta">{{ article.source_name or '' }} &middot; {{ article.published_at or '' }}</div>
+        {% if article.summary %}<p>{{ article.summary[:200] }}{% if article.summary|length > 200 %}...{% endif %}</p>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if dossier.filings %}
+<div class="card">
+    <h3>SEC Filings ({{ dossier.filings | length }})</h3>
+    <table>
+        <tr><th>Form</th><th>Date</th><th>Link</th></tr>
+        {% for f in dossier.filings[:10] %}
+        <tr>
+            <td>{{ f.form }}</td>
+            <td>{{ f.filed_at }}</td>
+            <td>{% if f.url %}<a href="{{ f.url }}" target="_blank" style="color:#a78bfa">View</a>{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
