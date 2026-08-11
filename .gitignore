@@ -1,3 +1,14 @@
-.env
-.env.example
-Documents/
+not to share/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+web scraper/output/.cache/
+web scraper/.env
+
+linkedin scrape/.env
+linkedin scrape/.venv/
+linkedin scrape/storage/
+linkedin scrape/output/
+linkedin scrape/urls.txt
