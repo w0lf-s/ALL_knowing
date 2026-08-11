@@ -1,0 +1,484 @@
+{
+  "query": "Apple",
+  "resolved": {
+    "ticker": "AAPL",
+    "cik": "0000320193",
+    "name": "Apple Inc.",
+    "website": "https://www.apple.com/",
+    "wiki_title": "Apple",
+    "domain": "apple.com",
+    "exchanges": [
+      "NASDAQ NMS - GLOBAL MARKET",
+      "NASDAQ"
+    ],
+    "sic": "3571",
+    "sic_description": "Electronic Computers"
+  },
+  "overview": {
+    "legal_name": "Apple Inc",
+    "description": "An apple is the round, edible fruit of an apple tree. Fruit trees of the orchard or domestic apple, the most widely grown in the genus, are cultivated worldwide. The tree originated in Central Asia, where its wild ancestor, Malus sieversii, is still found. Apples have been grown for thousands of years in Eurasia before they were introduced to North America by European colonists. Apples have cultural significance in many mythologies and religions.",
+    "short_description": "Edible fruit",
+    "industry": "Technology",
+    "sector": "TECHNOLOGY",
+    "headquarters": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+    "country": "US",
+    "city": null,
+    "state": null,
+    "address": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+    "founded": null,
+    "ipo_date": "1980-12-12",
+    "employees": null,
+    "website": "https://www.apple.com/",
+    "phone": "14089961010",
+    "logo_url": "https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/AAPL.png",
+    "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Pink_lady_and_cross_section.jpg/330px-Pink_lady_and_cross_section.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "wikipedia_url": "https://en.wikipedia.org/wiki/Apple",
+    "currency": "USD",
+    "share_class": null,
+    "isin": null,
+    "cusip": null,
+    "figi": null,
+    "via": []
+  },
+  "financials": {
+    "market_cap": "4515147284000",
+    "enterprise_value": null,
+    "revenue": "466822988000",
+    "gross_profit": 227123003000.0,
+    "ebitda": 167959003000.0,
+    "net_income": null,
+    "eps": 8.88,
+    "diluted_eps_ttm": 8.88,
+    "book_value": 7.36,
+    "dividend_per_share": 1.05,
+    "dividend_yield": 0.0035,
+    "dividend_date": "2026-08-13",
+    "ex_dividend_date": "2026-08-10",
+    "pe_ratio": 34.84,
+    "peg_ratio": 2.457,
+    "forward_pe": 31.95,
+    "price_to_sales_ttm": 9.67,
+    "price_to_book": 42.2,
+    "ev_to_revenue": 9.77,
+    "ev_to_ebitda": 27.14,
+    "profit_margin": 0.276,
+    "operating_margin_ttm": 0.326,
+    "return_on_assets_ttm": 0.271,
+    "return_on_equity_ttm": 1.488,
+    "revenue_ttm": 466822988000.0,
+    "revenue_per_share_ttm": 31.71,
+    "quarterly_earnings_growth_yoy": 0.287,
+    "quarterly_revenue_growth_yoy": 0.164,
+    "analyst_target_price": 324.01,
+    "trailing_pe": 34.84,
+    "beta": 1.086,
+    "week_52_high": 344.57,
+    "week_52_low": 215.72,
+    "moving_average_50": 309.52,
+    "moving_average_200": 278.24,
+    "shares_outstanding": 14594180000.0,
+    "shares_float": 14569224000.0,
+    "percent_insiders": 1.647,
+    "percent_institutions": 65.948,
+    "metrics_raw": {
+      "Symbol": "AAPL",
+      "AssetType": "Common Stock",
+      "Name": "Apple Inc.",
+      "Description": "Apple Inc. is an American multinational technology company that specializes in consumer electronics, computer software, and online services. Apple is the world's largest technology company by revenue (totalling $274.5 billion in 2020) and, since January 2021, the world's most valuable company. As of 2021, Apple is the world's fourth-largest PC vendor by unit sales, and fourth-largest smartphone manufacturer. It is one of the Big Five American information technology companies, along with Amazon, Google, Microsoft, and Facebook.",
+      "CIK": "320193",
+      "Exchange": "NASDAQ",
+      "Currency": "USD",
+      "Country": "USA",
+      "Sector": "TECHNOLOGY",
+      "Industry": "CONSUMER ELECTRONICS",
+      "Address": "ONE APPLE PARK WAY, CUPERTINO, CA, UNITED STATES, 95014",
+      "OfficialSite": "https://www.apple.com",
+      "FiscalYearEnd": "September",
+      "LatestQuarter": "2026-06-30",
+      "MarketCapitalization": "4515147284000",
+      "EBITDA": "167959003000",
+      "PERatio": "34.84",
+      "PEGRatio": "2.457",
+      "BookValue": "7.36",
+      "DividendPerShare": "1.05",
+      "DividendYield": "0.0035",
+      "EPS": "8.88",
+      "RevenuePerShareTTM": "31.71",
+      "ProfitMargin": "0.276",
+      "OperatingMarginTTM": "0.326",
+      "ReturnOnAssetsTTM": "0.271",
+      "ReturnOnEquityTTM": "1.488",
+      "RevenueTTM": "466822988000",
+      "GrossProfitTTM": "227123003000",
+      "DilutedEPSTTM": "8.88",
+      "QuarterlyEarningsGrowthYOY": "0.287",
+      "QuarterlyRevenueGrowthYOY": "0.164",
+      "AnalystTargetPrice": "324.01",
+      "AnalystRatingStrongBuy": "6",
+      "AnalystRatingBuy": "22",
+      "AnalystRatingHold": "14",
+      "AnalystRatingSell": "2",
+      "AnalystRatingStrongSell": "2",
+      "TrailingPE": "34.84",
+      "ForwardPE": "31.95",
+      "10DayAverageTradingVolume": 63.31381,
+      "13WeekPriceReturnDaily": 7.2433,
+      "26WeekPriceReturnDaily": 14.3907,
+      "3MonthADReturnStd": 31.326527,
+      "3MonthAverageTradingVolume": 53.41187,
+      "52WeekHigh": 344.5699,
+      "52WeekHighDate": "2026-07-29",
+      "52WeekLow": 219.25,
+      "52WeekLowDate": "2025-08-08",
+      "52WeekPriceReturnDaily": 34.4059,
+      "5DayPriceReturnDaily": -0.362,
+      "assetTurnoverAnnual": 1.1584,
+      "assetTurnoverTTM": 1.2508,
+      "beta": 1.0782417,
+      "bookValuePerShareAnnual": 4.991,
+      "bookValuePerShareQuarterly": 7.3599,
+      "bookValueShareGrowth5Y": 5.34,
+      "capexCagr5Y": 11.71,
+      "cashFlowPerShareAnnual": 6.6855,
+      "cashFlowPerShareQuarterly": 9.3561,
+      "cashFlowPerShareTTM": 6.86253,
+      "cashPerSharePerShareAnnual": 3.7024,
+      "cashPerSharePerShareQuarterly": 4.2713,
+      "currentDividendYieldTTM": 0.3494,
+      "currentEv/freeCashFlowAnnual": 45.7772,
+      "currentEv/freeCashFlowTTM": 33.0785,
+      "currentRatioAnnual": 0.8933,
+      "currentRatioQuarterly": 1.0033,
+      "dividendGrowthRate5Y": 4.95,
+      "dividendIndicatedAnnual": 1.08,
+      "dividendPerShareAnnual": 1.0318,
+      "dividendPerShareTTM": 1.0616,
+      "dividendYieldIndicatedAnnual": 0.35035359761240514,
+      "ebitdPerShareAnnual": 9.6468,
+      "ebitdPerShareTTM": 11.365,
+      "ebitdaCagr5Y": 13.35,
+      "ebitdaInterimCagr5Y": 7.67,
+      "enterpriseValue": 4521272.5,
+      "epsAnnual": 7.465,
+      "epsBasicExclExtraItemsAnnual": 7.465
+    },
+    "highlights": [],
+    "via": []
+  },
+  "filings": [
+    {
+      "form": "10-Q",
+      "filed_at": "2026-07-31",
+      "accession_number": "0000320193-26-000020",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/aapl-20260627.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-07-30",
+      "accession_number": "0000320193-26-000018",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/aapl-20260730.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SD",
+      "filed_at": "2026-05-28",
+      "accession_number": "0001140361-26-023149",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126023149/ef20073373_sd.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "10-Q",
+      "filed_at": "2026-05-01",
+      "accession_number": "0000320193-26-000013",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-04-30",
+      "accession_number": "0000320193-26-000011",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-04-20",
+      "accession_number": "0001140361-26-015711",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-02-24",
+      "accession_number": "0001140361-26-006577",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126006577/ef20060722_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "10-Q",
+      "filed_at": "2026-01-30",
+      "accession_number": "0000320193-26-000006",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-01-29",
+      "accession_number": "0000320193-26-000005",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000005/aapl-20260129.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "DEFA14A",
+      "filed_at": "2026-01-08",
+      "accession_number": "0001308179-26-000009",
+      "title": "DEFINITIVE ADDITIONAL PROXY SOLICITING MATERIALS",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000130817926000009/aapl014016-defa14a.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "DEF 14A",
+      "filed_at": "2026-01-08",
+      "accession_number": "0001308179-26-000008",
+      "title": "DEFINITIVE PROXY STATEMENT",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000130817926000008/aapl014016-def14a.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "8-K",
+      "filed_at": "2026-01-02",
+      "accession_number": "0001140361-26-000199",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126000199/ef20060722_8k.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SCHEDULE 13G",
+      "filed_at": "2026-04-29",
+      "accession_number": "0002100119-26-000139",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000210011926000139/xslSCHEDULE_13G_X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "SCHEDULE 13G/A",
+      "filed_at": "2026-03-26",
+      "accession_number": "0000102909-26-000630",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000010290926000630/xslSCHEDULE_13G_X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "PX14A6G",
+      "filed_at": "2026-01-22",
+      "accession_number": "0001096906-26-000136",
+      "title": "NATIONAL LEGAL AND POLICY CENTER - PX14A6G",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000109690626000136/nlpc_px14a6g.htm",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "25-NSE",
+      "filed_at": "2025-11-14",
+      "accession_number": "0001354457-25-001138",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000135445725001138/xslF25X02/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "144/A",
+      "filed_at": "2025-10-02",
+      "accession_number": "0001959173-25-006313",
+      "title": null,
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000195917325006313/xsl144X01/primary_doc.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-06-17",
+      "accession_number": "0001140361-26-025622",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126025622/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-06-17",
+      "accession_number": "0001140361-26-025620",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126025620/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    },
+    {
+      "form": "4",
+      "filed_at": "2026-05-29",
+      "accession_number": "0001140361-26-023363",
+      "title": "FORM 4",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126023363/xslF345X06/form4.xml",
+      "via": [
+        "sec_edgar"
+      ]
+    }
+  ],
+  "news": {
+    "digest_summary": null,
+    "lookback_days": 3,
+    "articles": [
+      {
+        "title": "iPhone 18 Pro's BOM cost might rise 38%",
+        "summary": "The bill of materials (BOM) cost for Apple Inc.'s iPhone 18 Pro 256 GB is expected to jump 38% on an annual basis, TrendForce, a global market intelligence and research firm, reported on Monday.The ma...",
+        "content": "iPhone 18 Pro's BOM cost might rise 38% The bill of materials (BOM) cost for Apple Inc.'s iPhone 18 Pro 256 GB is expected to jump 38% on an annual basis, TrendForce, a global market intelligence and research firm, reported on Monday.The ma...",
+        "url": "https://biztoc.com/x/31e654bf248e4269",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-10T08:44:13Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple CEO Tim Cook Just Passed His Successor a Mess",
+        "summary": "Apple (NASDAQ: AAPL) CEO Tim Cook just passed his successor an absolute mess. Cook steps down on Sept. 1 from his role as CEO but will remain on the board. In his place, John Ternus will assume the role of CEO. However, the situation Ternus is taking over isn…",
+        "content": "Apple CEO Tim Cook Just Passed His Successor a Mess Apple (NASDAQ: AAPL) CEO Tim Cook just passed his successor an absolute mess. Cook steps down on Sept. 1 from his role as CEO but will remain on the board. In his place, John Ternus will assume the role of CEO. However, the situation Ternus is taking over isn't a pretty one. What's going…",
+        "url": "https://biztoc.com/x/7afd7fa246cf8c46",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-09T22:55:13Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple's Favorite Bullying Tactic Just Died in China. It Could Cost You Hundreds on Your Next iPhone",
+        "summary": "For years, Apple’s (AAPL) most effective negotiating weapon against memory companies was to dual-source using a cheaper supplier. This playbook worked, at times to the detriment of the memory makers, who just didn’t have any alternative to the type of volume …",
+        "content": "Apple's Favorite Bullying Tactic Just Died in China. It Could Cost You Hundreds on Your Next iPhone It Could Cost You Hundreds on Your Next iPhone barchart.com/story/news/3746480/apple-s-favorite-bullying-tactic-just-died-in-china-it-could-cost-you-hundreds-on-your-next-iphone For years, Apple’s (AAPL) most effective negotiating weapon against memory companies was to dual-source using a cheaper supplier. This playbook worked, at times to the detriment of the memory makers, who just didn’t have any alternative to the type of volume Apple offered. The emergence…",
+        "url": "https://biztoc.com/x/0c6adc2eb471b344",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-09T21:23:42Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple said to be testing Chinese chips",
+        "summary": "Apple Inc. is doing tests with memory chips from China amid supply struggles, the Wall Street Journal reported on Sunday, citing sources.The sources detailed that the chips from ChangXin Memory Techno...",
+        "content": "Apple Inc. is doing tests with memory chips from China amid supply struggles, the Wall Street Journal reported on Sunday, citing sources.The sources detailed that the chips from ChangXin Memory Techno...",
+        "url": "https://biztoc.com/x/aa6b7ca58d95b5ef",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-09T12:33:17Z",
+        "via": [
+          "newsapi"
+        ]
+      },
+      {
+        "title": "Apple Added About $1.5 Trillion in Market Value in a Year. Here's What $10,000 Invested a Decade Ago Is Worth Now",
+        "summary": "Apple Added About $1.5 Trillion in Market Value in a Year. Here's What $10,000 Invested a Decade Ago Is Worth Now. Apple (NASDAQ: AAPL) is worth about $4.54 trillion, up 51% over the past year -- a gain of more than $1.5 trillion. For scale, the whole company…",
+        "content": "Apple Added About $1.5 Trillion in Market Value in a Year. Here's What $10,000 Invested a Decade Ago Is Worth Now Here's What $10,000 Invested a Decade Ago Is Worth Now finance.yahoo.com/markets/stocks/articles/apple-added-1-5-trillion-080100829.html Apple Added About $1.5 Trillion in Market Value in a Year. Here's What $10,000 Invested a Decade Ago Is Worth Now. Apple (NASDAQ: AAPL) is worth about $4.54 trillion, up 51% over the past year -- a gain of more than $1.5 trillion. For scale, the whole company was worth about $580 billion…",
+        "url": "https://biztoc.com/x/7ff0ebee0f731169",
+        "source_name": "Biztoc.com",
+        "published_at": "2026-08-09T08:17:00Z",
+        "via": [
+          "newsapi"
+        ]
+      }
+    ]
+  },
+  "press": [],
+  "github": {
+    "org": {
+      "login": null,
+      "name": null,
+      "html_url": null,
+      "description": null,
+      "blog": null,
+      "location": null,
+      "public_repos": null,
+      "followers": null
+    },
+    "repos": []
+  },
+  "sources_status": {
+    "finnhub": {
+      "ok": true,
+      "error": null
+    },
+    "alpha_vantage": {
+      "ok": true,
+      "error": null
+    },
+    "sec_edgar": {
+      "ok": true,
+      "error": null
+    },
+    "wikipedia": {
+      "ok": true,
+      "error": null
+    },
+    "github": {
+      "ok": false,
+      "error": "missing_api_key"
+    },
+    "rss": {
+      "ok": false,
+      "error": "no_feed_found"
+    },
+    "newsapi": {
+      "ok": true,
+      "error": null
+    },
+    "gnews": {
+      "ok": true,
+      "error": null
+    }
+  },
+  "meta": {
+    "generated_at": "2026-08-11T08:51:51.678622+00:00",
+    "raw_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\web scraper\\output\\raw\\apple.json",
+    "company_path": "C:\\Users\\subhr\\OneDrive\\Desktop\\Zuntra\\ALL Knowing\\web scraper\\output\\company\\apple.json"
+  }
+}
