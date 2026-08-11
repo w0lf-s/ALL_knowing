@@ -1,12 +1,13 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT = ROOT / "output"
+PRIVATE_DIR = ROOT.parent / "not to share" / "web scraper"
+OUTPUT = PRIVATE_DIR / "output"
 CACHE = OUTPUT / ".cache"
 RAW_DIR = OUTPUT / "raw"
 COMPANY_DIR = OUTPUT / "company"
 NEWS_DIR = OUTPUT / "news"
-LASTRUN = ROOT / "lastrun.json"
+LASTRUN = PRIVATE_DIR / "lastrun.json"
 
 
 def company_key(query: str) -> str:

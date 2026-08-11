@@ -17,7 +17,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT = ROOT / "lastrun.json"
+DEFAULT = ROOT.parent / "not to share" / "web scraper" / "lastrun.json"
 REQUIRED = (
     "query",
     "resolved",
