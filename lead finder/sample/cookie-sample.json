@@ -1,0 +1,72 @@
+{
+  "sourceUrl": "https://acmecorp.com/pricing",
+  "collectedAt": "2026-08-03T06:12:44.000Z",
+  "cookies": [
+    {
+      "name": "_ga",
+      "value": "GA1.2.1847293641.1722667964",
+      "domain": ".acmecorp.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "lax"
+    },
+    {
+      "name": "_gid",
+      "value": "GA1.2.918273645.1722667964",
+      "domain": ".acmecorp.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "lax"
+    },
+    {
+      "name": "_fbp",
+      "value": "fb.1.1722667964123.987654321",
+      "domain": ".acmecorp.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "lax"
+    },
+    {
+      "name": "utm_source",
+      "value": "linkedin",
+      "domain": "acmecorp.com",
+      "path": "/",
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "lax"
+    },
+    {
+      "name": "utm_campaign",
+      "value": "q3-demo-request",
+      "domain": "acmecorp.com",
+      "path": "/",
+      "secure": false,
+      "httpOnly": false,
+      "sameSite": "lax"
+    },
+    {
+      "name": "user_email",
+      "value": "jane.doe@northwind.io",
+      "domain": "acmecorp.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": false,
+      "sameSite": "lax"
+    }
+  ],
+  "parsed": {
+    "visitorId": "1847293641",
+    "sessionId": "918273645",
+    "utm": {
+      "source": "linkedin",
+      "campaign": "q3-demo-request"
+    },
+    "email": "jane.doe@northwind.io",
+    "emailDomain": "northwind.io",
+    "isCorporate": true,
+    "leadScore": 86
+  }
+}
