@@ -21,7 +21,7 @@ from src.arrange_text import arrange_text
 from src.cache import load_news_day, save_news_day
 from src.http import HttpClient
 from src.merge import is_english_article, merge_dossier, merge_news_articles
-from src.news_enrich import enrich_articles, needs_content, pick_best_articles
+from src.news_enrich import enrich_articles, is_error_article, needs_content, pick_best_articles
 from src.news_relevance import filter_relevant_articles
 from src.paths import COMPANY_DIR, LASTRUN, RAW_DIR, company_key, ensure_dirs
 from src.rate_limit import RateLimits
@@ -103,12 +103,12 @@ async def run_pipeline(
                     company_name=company_label,
                     ticker=ctx.ticker,
                     query=query,
-                    limit=8,
+                    limit=16,
                     use_groq=use_groq,
                 )
-                enriched = await enrich_articles(relevant, top_n=8, enabled=True)
+                enriched = await enrich_articles(relevant, top_n=16, enabled=True)
                 articles = pick_best_articles(
-                    [a for a in enriched if is_english_article(a)],
+                    [a for a in enriched if is_english_article(a) and not is_error_article(a)],
                     limit=8,
                 )
             else:
@@ -140,12 +140,12 @@ async def run_pipeline(
                 company_name=company_label,
                 ticker=ctx.ticker,
                 query=query,
-                limit=8,
+                limit=16,
                 use_groq=use_groq,
             )
-            enriched = await enrich_articles(relevant, top_n=8, enabled=use_playwright)
+            enriched = await enrich_articles(relevant, top_n=16, enabled=use_playwright)
             articles = pick_best_articles(
-                [a for a in enriched if is_english_article(a)],
+                [a for a in enriched if is_english_article(a) and not is_error_article(a)],
                 limit=8,
             )
             save_news_day(

@@ -87,7 +87,7 @@ def show_company(company: dict[str, Any] | None, error: str | None = None, conso
 
 
 def show_candidate_urls(
-    urls: list[str],
+    candidates: list[dict[str, str]] | list[str],
     error: str | None = None,
     *,
     skipped: bool = False,
@@ -99,15 +99,22 @@ def show_candidate_urls(
         return
     if skipped:
         return
-    if not urls:
+    if not candidates:
         c.print(Panel("No LinkedIn profile URLs found.", title="LinkedIn candidates"))
         return
     t = Table(show_header=True)
     t.add_column("#", style="dim", width=4)
+    t.add_column("Name")
     t.add_column("Profile URL")
-    for i, url in enumerate(urls, start=1):
-        t.add_row(str(i), url)
-    c.print(Panel(t, title=f"LinkedIn candidates ({len(urls)})"))
+    for i, item in enumerate(candidates, start=1):
+        if isinstance(item, dict):
+            name = item.get("name") or "-"
+            url = item.get("url") or ""
+        else:
+            name = "-"
+            url = str(item)
+        t.add_row(str(i), name, url)
+    c.print(Panel(t, title=f"LinkedIn candidates ({len(candidates)})"))
 
 
 def show_profiles(

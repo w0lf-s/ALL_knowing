@@ -34,7 +34,7 @@ def search_people_urls(
     *,
     max_profiles: int = 5,
     headless: bool = True,
-) -> list[str]:
+) -> list[dict[str, str]]:
     with linkedin_src_path():
         from src.auth import create_authenticated_context, open_playwright
         from src.config import get_settings
@@ -44,7 +44,7 @@ def search_people_urls(
 
         playwright = open_playwright()
         browser = None
-        found: list[str] = []
+        found: list[dict[str, str]] = []
         seen: set[str] = set()
         try:
             browser, context = create_authenticated_context(playwright, settings)
@@ -62,19 +62,31 @@ def search_people_urls(
             for _ in range(3):
                 page.mouse.wheel(0, 2400)
                 page.wait_for_timeout(800)
-            hrefs = page.eval_on_selector_all(
+            items = page.eval_on_selector_all(
                 'a[href*="/in/"]',
-                "els => els.map(e => e.href)",
+                """els => els.map(e => {
+                    const href = e.href || '';
+                    let name = (e.innerText || '').trim().split('\\n')[0].trim();
+                    if (!name || name.length > 80) {
+                        const card = e.closest('li, .reusable-search__result-container, .entity-result');
+                        const title = card?.querySelector(
+                            '.entity-result__title-text span[aria-hidden="true"], .entity-result__title-text a span'
+                        );
+                        name = (title?.innerText || e.getAttribute('aria-label') || '').trim();
+                    }
+                    return { href, name };
+                })""",
             )
-            for href in hrefs or []:
-                normalized = _normalize_profile_url(str(href))
+            for item in items or []:
+                normalized = _normalize_profile_url(str(item.get("href") or ""))
                 if not normalized:
                     continue
                 key = normalized.lower()
                 if key in seen:
                     continue
                 seen.add(key)
-                found.append(normalized)
+                display_name = str(item.get("name") or "").strip()
+                found.append({"url": normalized, "name": display_name})
                 if len(found) >= max_profiles:
                     break
             page.close()

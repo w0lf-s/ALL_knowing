@@ -9,17 +9,44 @@ from src.adapters.wikipedia import fetch_wikipedia
 from src.http import HttpClient
 from src.rate_limit import RateLimits
 
+_SEARCH_ALIASES: dict[str, list[str]] = {
+    "google": ["Alphabet", "GOOGL"],
+    "youtube": ["Alphabet", "GOOGL"],
+    "instagram": ["Meta", "META"],
+    "facebook": ["Meta", "META"],
+    "whatsapp": ["Meta", "META"],
+    "aws": ["Amazon", "AMZN"],
+    "linkedin": ["Microsoft", "MSFT"],
+}
+
+
+async def _lookup_ticker(
+    http: HttpClient,
+    limits: RateLimits,
+    query: str,
+) -> tuple[str | None, str | None]:
+    terms = [query]
+    for alt in _SEARCH_ALIASES.get(query.lower().strip(), []):
+        if alt not in terms:
+            terms.append(alt)
+    for term in terms:
+        fh = await search_symbol(http, limits, term)
+        if not fh.ok or not isinstance(fh.data, dict):
+            continue
+        search = fh.data.get("search") or {}
+        if not (search.get("result") or []):
+            continue
+        ticker, name = pick_best_symbol(search, term)
+        if ticker:
+            return ticker, name or query
+    return None, query
+
 
 async def resolve_identity(http: HttpClient, limits: RateLimits, query: str) -> CompanyContext:
     ctx = CompanyContext(query=query)
-    fh = await search_symbol(http, limits, query)
-    if fh.ok and isinstance(fh.data, dict):
-        search = fh.data.get("search") or {}
-        ticker, name = pick_best_symbol(search, query)
-        ctx.ticker = ticker
-        ctx.name = name or query
-    else:
-        ctx.name = query
+    ticker, name = await _lookup_ticker(http, limits, query)
+    ctx.ticker = ticker
+    ctx.name = name or query
 
     user_agent = os.getenv("SEC_USER_AGENT", "").strip() or "company_search contact@example.com"
     if ctx.ticker:

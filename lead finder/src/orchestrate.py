@@ -89,6 +89,7 @@ def run_lead_finder(
         "company": None,
         "company_error": None,
         "candidate_urls": [],
+        "candidates": [],
         "search_error": None,
         "profiles": [],
         "scrape_error": None,
@@ -126,19 +127,20 @@ def run_lead_finder(
         if live:
             show_step(f"Searching LinkedIn people for: {query_bits}", console)
         try:
-            urls = search_people_urls(
+            candidates = search_people_urls(
                 parsed.name,
                 parsed.company if parsed.is_corporate else "",
                 max_profiles=max_profiles,
                 headless=headless,
             )
-            out["candidate_urls"] = urls
-            write_urls(CANDIDATE_URLS_PATH, urls)
+            out["candidates"] = candidates
+            out["candidate_urls"] = [c["url"] for c in candidates]
+            write_urls(CANDIDATE_URLS_PATH, out["candidate_urls"])
         except Exception as exc:
             out["search_error"] = str(exc)
         if live:
             show_candidate_urls(
-                out["candidate_urls"],
+                out.get("candidates") or [],
                 out["search_error"],
                 skipped=False,
                 console=console,
