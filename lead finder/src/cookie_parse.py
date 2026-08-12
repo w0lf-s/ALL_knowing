@@ -5,6 +5,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from src.config import COOKIES_DIR
+from src.email_parse import classify_email
+
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 _EMAIL_COOKIE_NAMES = ("user_email", "session_user", "logged_in_email")
 
@@ -48,3 +51,31 @@ def primary_email_from_cookie_file(path: Path) -> str:
     if not emails:
         raise ValueError(f"No email found in cookie snapshot: {path}")
     return emails[0]
+
+
+def load_sample_leads(cookies_dir: Path | None = None) -> list[dict[str, Any]]:
+    root = cookies_dir or COOKIES_DIR
+    if not root.exists():
+        return []
+    leads: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*.json")):
+        snapshot = load_cookie_snapshot(path)
+        email = primary_email_from_cookie_file(path)
+        parsed = classify_email(email).to_dict()
+        meta = snapshot.get("parsed") or {}
+        if meta.get("name"):
+            parsed["name"] = meta["name"]
+        if meta.get("company"):
+            parsed["company"] = meta["company"]
+        leads.append(
+            {
+                "id": path.stem,
+                "email": email,
+                "parsed": parsed,
+                "source_url": snapshot.get("sourceUrl") or "",
+                "linkedin_url": meta.get("linkedin_url") or "",
+                "title": meta.get("title") or "",
+                "from_sample_cookie": True,
+            }
+        )
+    return leads

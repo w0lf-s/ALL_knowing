@@ -14,7 +14,15 @@
         .container { max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; }
         .search-box { background: #1a1a2e; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid #2a2a4a; }
         .search-box h2 { margin-bottom: 1rem; color: #c4b5fd; font-size: 1.2rem; }
-        .search-box form { display: flex; gap: 0.75rem; }
+        .search-box form { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+        .search-box .form-row { display: flex; gap: 0.75rem; width: 100%; }
+        .search-box .form-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .search-box button.secondary { background: #2a2a4a; }
+        .search-box button.secondary:hover { background: #3a3a5a; }
+        .search-box label.check { display: flex; align-items: center; gap: 0.5rem; color: #a0a0a0; font-size: 0.9rem; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: #2a2a4a; color: #c4b5fd; }
+        .badge.yes { background: #14532d; color: #86efac; }
+        .badge.no { background: #3b1111; color: #fca5a5; }
         .search-box input[type="text"] { flex: 1; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #3a3a5a; background: #0f0f0f; color: #e0e0e0; font-size: 1rem; outline: none; transition: border-color 0.2s; }
         .search-box input[type="text"]:focus { border-color: #7c3aed; }
         .search-box button { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: #7c3aed; color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
@@ -42,6 +50,7 @@
 <body>
     <nav>
         <span class="brand">ALL Knowing</span>
+        <a href="/lead" class="{% if active == 'lead' %}active{% endif %}">Lead</a>
         <a href="/company" class="{% if active == 'company' %}active{% endif %}">Company Search</a>
         <a href="/linkedin" class="{% if active == 'linkedin' %}active{% endif %}">LinkedIn Lookup</a>
     </nav>
@@ -50,10 +59,16 @@
     </div>
     <script>
         document.querySelectorAll('form').forEach(form => {
-            form.addEventListener('submit', () => {
-                const btn = form.querySelector('button');
+            form.addEventListener('submit', (e) => {
+                const submitter = e.submitter;
+                const btns = form.querySelectorAll('button');
                 const loading = form.parentElement.querySelector('.loading');
-                if (btn) { btn.disabled = true; btn.textContent = 'Working...'; }
+                btns.forEach(btn => {
+                    btn.disabled = true;
+                    if (submitter && btn === submitter) {
+                        btn.textContent = btn.dataset.busy || 'Working...';
+                    }
+                });
                 if (loading) loading.classList.add('show');
             });
         });

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set active = "lead" %}
+{% block content %}
+<div class="search-box">
+    <h2>Lead Investigation</h2>
+    <form method="POST" action="/lead">
+        <div class="form-row">
+            <input type="text" name="email" placeholder="Enter viewer email (e.g. satya.nadella@microsoft.com)" value="{{ email or '' }}">
+        </div>
+        <label class="check">
+            <input type="checkbox" name="use_sample" {% if use_sample %}checked{% endif %}>
+            Use sample cookie (lead finder/sample/cookie-sample.json)
+        </label>
+        <div class="form-actions">
+            <button type="submit" name="action" value="parse" class="secondary" data-busy="Parsing...">Show Lead</button>
+            <button type="submit" name="action" value="investigate" data-busy="Investigating...">Investigate</button>
+        </div>
+    </form>
+    <div class="loading"><div class="spinner"></div><span>Running web scraper + LinkedIn search/scrape. This can take a few minutes...</span></div>
+</div>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+{% if parsed %}
+<div class="card">
+    <h3>Lead</h3>
+    <table>
+        <tr><th>Email</th><td>{{ parsed.email }}</td></tr>
+        <tr><th>Name</th><td>{{ parsed.name or '-' }}</td></tr>
+        <tr><th>Company</th><td>{{ parsed.company or '-' }}</td></tr>
+        <tr><th>Domain</th><td>{{ parsed.domain or '-' }}</td></tr>
+        <tr>
+            <th>Corporate</th>
+            <td>
+                {% if parsed.is_corporate %}
+                <span class="badge yes">yes</span>
+                {% else %}
+                <span class="badge no">no</span>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+    {% if not result %}
+    <form method="POST" action="/lead" style="margin-top: 1rem;">
+        <input type="hidden" name="email" value="{{ parsed.email }}">
+        {% if use_sample %}<input type="hidden" name="use_sample" value="on">{% endif %}
+        <button type="submit" name="action" value="investigate" data-busy="Investigating...">Investigate this lead</button>
+    </form>
+    <div class="loading"><div class="spinner"></div><span>Investigating lead...</span></div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if result %}
+{% set dossier = result.company %}
+{% if result.company_error %}
+<div class="error">Company: {{ result.company_error }}</div>
+{% endif %}
+
+{% if dossier %}
+<div class="card">
+    <h3>Company (web scraper) — {{ dossier.resolved.name or dossier.query }} {% if dossier.resolved.ticker %}<span style="color:#888">({{ dossier.resolved.ticker }})</span>{% endif %}</h3>
+    <table>
+        {% if dossier.overview.description %}<tr><th>Description</th><td>{{ dossier.overview.description }}</td></tr>{% endif %}
+        {% if dossier.overview.industry %}<tr><th>Industry</th><td>{{ dossier.overview.industry }}</td></tr>{% endif %}
+        {% if dossier.overview.sector %}<tr><th>Sector</th><td>{{ dossier.overview.sector }}</td></tr>{% endif %}
+        {% if dossier.overview.headquarters %}<tr><th>Headquarters</th><td>{{ dossier.overview.headquarters }}</td></tr>{% endif %}
+        {% if dossier.overview.website %}<tr><th>Website</th><td><a href="{{ dossier.overview.website }}" target="_blank" style="color:#a78bfa">{{ dossier.overview.website }}</a></td></tr>{% endif %}
+        {% if dossier.overview.employees %}<tr><th>Employees</th><td>{{ dossier.overview.employees }}</td></tr>{% endif %}
+    </table>
+</div>
+
+{% if dossier.news and dossier.news.articles %}
+<div class="card">
+    <h3>Company news ({{ dossier.news.articles | length }})</h3>
+    {% for article in dossier.news.articles[:8] %}
+    <div class="news-item">
+        <h4>{% if article.url %}<a href="{{ article.url }}" target="_blank">{{ article.title or 'Untitled' }}</a>{% else %}{{ article.title or 'Untitled' }}{% endif %}</h4>
+        <div class="meta">{{ article.source_name or '' }} &middot; {{ article.published_at or '' }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+{% if result.search_error %}
+<div class="error">LinkedIn search: {{ result.search_error }}</div>
+{% endif %}
+
+{% if result.candidate_urls %}
+<div class="card">
+    <h3>LinkedIn candidates ({{ result.candidate_urls | length }})</h3>
+    <table>
+        {% for url in result.candidate_urls %}
+        <tr>
+            <th>{{ loop.index }}</th>
+            <td><a href="{{ url }}" target="_blank" style="color:#a78bfa">{{ url }}</a></td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+{% if result.scrape_error %}
+<div class="error">LinkedIn scrape: {{ result.scrape_error }}</div>
+{% endif %}
+
+{% if result.profiles %}
+{% for profile in result.profiles %}
+<div class="card">
+    <h3>LinkedIn profile {{ loop.index }} — {{ profile.name or 'Unknown' }}</h3>
+    <table>
+        {% if profile.headline %}<tr><th>Headline</th><td>{{ profile.headline }}</td></tr>{% endif %}
+        {% if profile.current_role %}<tr><th>Current Role</th><td>{{ profile.current_role }}</td></tr>{% endif %}
+        {% if profile.current_company %}<tr><th>Company</th><td>{{ profile.current_company }}</td></tr>{% endif %}
+        {% if profile.location %}<tr><th>Location</th><td>{{ profile.location }}</td></tr>{% endif %}
+        {% if profile.email %}<tr><th>Email</th><td>{{ profile.email }}</td></tr>{% endif %}
+        {% if profile.phone %}<tr><th>Phone</th><td>{{ profile.phone }}</td></tr>{% endif %}
+        {% if profile.linkedin_profile_url or profile.url %}<tr><th>Profile URL</th><td><a href="{{ profile.linkedin_profile_url or profile.url }}" target="_blank" style="color:#a78bfa">{{ profile.linkedin_profile_url or profile.url }}</a></td></tr>{% endif %}
+        {% if profile.about %}<tr><th>About</th><td>{{ profile.about }}</td></tr>{% endif %}
+        {% if profile.error %}<tr><th>Error</th><td style="color:#fca5a5">{{ profile.error }}</td></tr>{% endif %}
+    </table>
+</div>
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -5,6 +5,7 @@ REPO_ROOT = ROOT.parent
 SECRETS_DIR = REPO_ROOT / "not to share"
 PRIVATE_DIR = SECRETS_DIR / "lead finder"
 OUTPUT_DIR = PRIVATE_DIR / "output"
+COOKIES_DIR = PRIVATE_DIR / "cookies"
 LAST_RUN_JSON = OUTPUT_DIR / "last_run.json"
 CANDIDATE_URLS_PATH = OUTPUT_DIR / "candidate_urls.txt"
 VENV_PYTHON = SECRETS_DIR / ".venv" / "Scripts" / "python.exe"

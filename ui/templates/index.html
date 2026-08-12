@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALL Knowing</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+        nav { background: #1a1a2e; padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; border-bottom: 1px solid #2a2a4a; }
+        nav .brand { font-size: 1.4rem; font-weight: 700; color: #7c3aed; }
+        nav button.tab { color: #a0a0a0; background: transparent; border: none; text-decoration: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+        nav button.tab:hover, nav button.tab.active { color: #fff; background: #2a2a4a; }
+        .container { max-width: 1000px; margin: 2rem auto; padding: 0 1.5rem; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .search-box { background: #1a1a2e; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid #2a2a4a; }
+        .search-box h2 { margin-bottom: 1rem; color: #c4b5fd; font-size: 1.2rem; }
+        .search-box form { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+        .search-box .form-row { display: flex; gap: 0.75rem; width: 100%; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; background: #2a2a4a; color: #c4b5fd; }
+        .badge.yes { background: #14532d; color: #86efac; }
+        .badge.no { background: #3b1111; color: #fca5a5; }
+        .search-box input[type="text"] { flex: 1; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #3a3a5a; background: #0f0f0f; color: #e0e0e0; font-size: 1rem; outline: none; }
+        .search-box input[type="text"]:focus { border-color: #7c3aed; }
+        .search-box button, .card button { padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: #7c3aed; color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+        .search-box button:hover, .card button:hover { background: #6d28d9; }
+        .search-box button:disabled, .card button:disabled { opacity: 0.6; cursor: wait; }
+        .card button.secondary { background: #2a2a4a; }
+        .card button.secondary:hover { background: #3a3a5a; }
+        .error { background: #3b1111; border: 1px solid #7f1d1d; color: #fca5a5; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; }
+        .card { background: #1a1a2e; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #2a2a4a; }
+        .card h3 { color: #c4b5fd; margin-bottom: 1rem; font-size: 1.1rem; }
+        .card-actions { display: flex; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }
+        table { width: 100%; border-collapse: collapse; }
+        table th, table td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2a2a4a; vertical-align: top; }
+        table th { color: #a78bfa; font-weight: 600; width: 35%; }
+        table td { color: #d4d4d4; word-break: break-word; }
+        .news-item { padding: 1rem 0; border-bottom: 1px solid #2a2a4a; }
+        .news-item:last-child { border-bottom: none; }
+        .news-item h4 { color: #e0e0e0; margin-bottom: 0.3rem; }
+        .news-item h4 a { color: #a78bfa; text-decoration: none; }
+        .news-item .meta { font-size: 0.85rem; color: #888; }
+        .news-item p { margin-top: 0.5rem; color: #b0b0b0; font-size: 0.9rem; }
+        .loading { display: none; align-items: center; gap: 0.5rem; color: #a78bfa; margin-top: 0.75rem; }
+        .loading.show { display: flex; }
+        .spinner { width: 18px; height: 18px; border: 2px solid #7c3aed; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .muted { color: #888; }
+        a.link { color: #a78bfa; }
+        .lead-details { margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="brand">ALL Knowing</span>
+        <button type="button" class="tab active" data-tab="lead">Lead</button>
+        <button type="button" class="tab" data-tab="company">Company Search</button>
+        <button type="button" class="tab" data-tab="linkedin">LinkedIn Lookup</button>
+    </nav>
+    <div class="container">
+        <section id="panel-lead" class="panel active">
+            <div class="search-box">
+                <h2>Lead Investigation</h2>
+                <form id="lead-form" class="form-row">
+                    <input type="text" id="lead-email" placeholder="Enter viewer email (e.g. satya.nadella@microsoft.com)" required>
+                    <button type="submit" id="lead-add-btn">Add Lead</button>
+                </form>
+                <div class="loading" id="lead-loading"><div class="spinner"></div><span>Adding lead...</span></div>
+            </div>
+            <div id="lead-error"></div>
+            <div id="lead-list"></div>
+        </section>
+
+        <section id="panel-company" class="panel">
+            <div class="search-box">
+                <h2>Company Intelligence Search</h2>
+                <form id="company-form" class="form-row">
+                    <input type="text" id="company-query" placeholder="Enter company name (e.g. Apple, HCL, Tesla)" required>
+                    <button type="submit" id="company-btn">Search</button>
+                </form>
+                <div class="loading" id="company-loading"><div class="spinner"></div><span>Fetching company data...</span></div>
+            </div>
+            <div id="company-error"></div>
+            <div id="company-results"></div>
+        </section>
+
+        <section id="panel-linkedin" class="panel">
+            <div class="search-box">
+                <h2>LinkedIn Profile Lookup</h2>
+                <form id="linkedin-form" class="form-row">
+                    <input type="text" id="linkedin-url" placeholder="Enter LinkedIn profile URL" required>
+                    <button type="submit" id="linkedin-btn">Scrape</button>
+                </form>
+                <div class="loading" id="linkedin-loading"><div class="spinner"></div><span>Scraping LinkedIn profile...</span></div>
+            </div>
+            <div id="linkedin-error"></div>
+            <div id="linkedin-results"></div>
+        </section>
+    </div>
+
+    <script>
+        const state = {
+            tab: 'lead',
+            leads: [],
+            company: { query: '', dossier: null },
+            linkedin: { url: '', profiles: [], candidateUrls: [] },
+        };
+
+        function $(id) { return document.getElementById(id); }
+        function esc(v) {
+            return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function val(v, fallback='-') {
+            if (v === null || v === undefined || v === '') return fallback;
+            return esc(v);
+        }
+        function money(n) {
+            const x = Number(n);
+            if (!Number.isFinite(x)) return esc(n);
+            return '$' + Math.round(x).toLocaleString();
+        }
+        function showError(el, msg) {
+            el.innerHTML = msg ? `<div class="error">${esc(msg)}</div>` : '';
+        }
+        function setLoading(id, on, text) {
+            const el = $(id);
+            if (!el) return;
+            el.classList.toggle('show', !!on);
+            if (text) {
+                const span = el.querySelector('span');
+                if (span) span.textContent = text;
+            }
+        }
+        function saveState() {
+            try { sessionStorage.setItem('allKnowingUi', JSON.stringify(state)); } catch (_) {}
+        }
+        function loadState() {
+            try {
+                const raw = sessionStorage.getItem('allKnowingUi');
+                if (!raw) return;
+                const parsed = JSON.parse(raw);
+                if (parsed.leads) state.leads = parsed.leads;
+                if (parsed.company) state.company = parsed.company;
+                if (parsed.linkedin) state.linkedin = parsed.linkedin;
+                if (parsed.tab) state.tab = parsed.tab;
+            } catch (_) {}
+        }
+        function uid() {
+            return 'lead_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        }
+
+        function switchTab(tab) {
+            state.tab = tab;
+            document.querySelectorAll('nav button.tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tab);
+            });
+            document.querySelectorAll('.panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === `panel-${tab}`);
+            });
+            history.replaceState(null, '', `#${tab}`);
+            saveState();
+            renderAll();
+        }
+
+        function row(label, valueHtml) {
+            if (!valueHtml || valueHtml === '-') return '';
+            return `<tr><th>${esc(label)}</th><td>${valueHtml}</td></tr>`;
+        }
+
+        function renderCompanyDossier(dossier, titlePrefix) {
+            if (!dossier) return '<div class="card"><p class="muted">No company data yet. Investigate a lead, or search here.</p></div>';
+            const resolved = dossier.resolved || {};
+            const overview = dossier.overview || {};
+            const financials = dossier.financials || {};
+            const news = (dossier.news && dossier.news.articles) || [];
+            const filings = dossier.filings || [];
+            const name = resolved.name || dossier.query || 'Company';
+            const ticker = resolved.ticker ? ` <span style="color:#888">(${esc(resolved.ticker)})</span>` : '';
+            let html = `
+            <div class="card">
+                <h3>${esc(titlePrefix || 'Company')} — ${esc(name)}${ticker}</h3>
+                <table>
+                    ${row('Description', val(overview.description || overview.short_description))}
+                    ${row('Industry', val(overview.industry))}
+                    ${row('Sector', val(overview.sector))}
+                    ${row('Headquarters', val(overview.headquarters))}
+                    ${row('Country', val(overview.country))}
+                    ${overview.website ? row('Website', `<a class="link" href="${esc(overview.website)}" target="_blank">${esc(overview.website)}</a>`) : ''}
+                    ${row('Employees', val(overview.employees))}
+                    ${resolved.exchanges && resolved.exchanges.length ? row('Exchange', esc(resolved.exchanges.join(', '))) : ''}
+                </table>
+            </div>`;
+            if (financials.market_cap || financials.revenue || financials.pe_ratio) {
+                html += `
+                <div class="card">
+                    <h3>Financials</h3>
+                    <table>
+                        ${financials.market_cap ? row('Market Cap', money(financials.market_cap)) : ''}
+                        ${financials.revenue ? row('Revenue', money(financials.revenue)) : ''}
+                        ${row('EPS', val(financials.eps))}
+                        ${row('P/E Ratio', val(financials.pe_ratio))}
+                        ${row('Beta', val(financials.beta))}
+                        ${row('52W High', val(financials.week_52_high))}
+                        ${row('52W Low', val(financials.week_52_low))}
+                    </table>
+                </div>`;
+            }
+            if (news.length) {
+                html += `<div class="card"><h3>Recent News (${news.length})</h3>`;
+                news.slice(0, 10).forEach(a => {
+                    const title = a.url
+                        ? `<a href="${esc(a.url)}" target="_blank">${esc(a.title || 'Untitled')}</a>`
+                        : esc(a.title || 'Untitled');
+                    html += `<div class="news-item"><h4>${title}</h4><div class="meta">${esc(a.source_name || '')} · ${esc(a.published_at || '')}</div>`;
+                    if (a.summary) html += `<p>${esc(String(a.summary).slice(0, 200))}</p>`;
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            }
+            if (filings.length) {
+                html += `<div class="card"><h3>SEC Filings (${filings.length})</h3><table>`;
+                filings.slice(0, 10).forEach(f => {
+                    const link = f.url ? `<a class="link" href="${esc(f.url)}" target="_blank">View</a>` : '-';
+                    html += `<tr><td>${esc(f.form || '')}</td><td>${esc(f.filed_at || '')}</td><td>${link}</td></tr>`;
+                });
+                html += `</table></div>`;
+            }
+            return html;
+        }
+
+        function renderProfiles(profiles, candidateUrls) {
+            let html = '';
+            if (candidateUrls && candidateUrls.length) {
+                html += `<div class="card"><h3>LinkedIn candidates (${candidateUrls.length})</h3><table>`;
+                candidateUrls.forEach((url, i) => {
+                    html += `<tr><th>${i + 1}</th><td><a class="link" href="${esc(url)}" target="_blank">${esc(url)}</a></td></tr>`;
+                });
+                html += `</table></div>`;
+            }
+            if (!profiles || !profiles.length) {
+                if (!html) html = '<div class="card"><p class="muted">No LinkedIn profiles yet. Investigate a lead, or scrape a URL here.</p></div>';
+                return html;
+            }
+            profiles.forEach((p, i) => {
+                const profileUrl = p.linkedin_profile_url || p.url;
+                html += `
+                <div class="card">
+                    <h3>LinkedIn profile ${i + 1} — ${esc(p.name || 'Unknown')}</h3>
+                    <table>
+                        ${row('Headline', val(p.headline))}
+                        ${row('Role', val(p.current_role))}
+                        ${row('Company', val(p.current_company))}
+                        ${row('Location', val(p.location))}
+                        ${row('Email', val(p.email))}
+                        ${row('Phone', val(p.phone))}
+                        ${profileUrl ? row('Profile', `<a class="link" href="${esc(profileUrl)}" target="_blank">${esc(profileUrl)}</a>`) : ''}
+                        ${row('About', val(p.about))}
+                        ${p.error ? `<tr><th>Error</th><td style="color:#fca5a5">${esc(p.error)}</td></tr>` : ''}
+                    </table>
+                </div>`;
+            });
+            return html;
+        }
+
+        function renderLeadInvestigation(result) {
+            if (!result) return '';
+            let html = '<div class="lead-details">';
+            if (result.company_error) html += `<div class="error">Company: ${esc(result.company_error)}</div>`;
+            if (result.company) html += renderCompanyDossier(result.company, 'Company (web scraper)');
+            if (result.search_error) html += `<div class="error">LinkedIn search: ${esc(result.search_error)}</div>`;
+            if (result.scrape_error) html += `<div class="error">LinkedIn scrape: ${esc(result.scrape_error)}</div>`;
+            html += renderProfiles(result.profiles || [], result.candidate_urls || []);
+            html += '</div>';
+            return html;
+        }
+
+        function renderLeadList() {
+            const list = $('lead-list');
+            if (!state.leads.length) {
+                list.innerHTML = '<div class="card"><p class="muted">No leads yet. Add an email above.</p></div>';
+                return;
+            }
+            list.innerHTML = state.leads.map(lead => {
+                const p = lead.parsed || {};
+                const corp = p.is_corporate
+                    ? '<span class="badge yes">yes</span>'
+                    : '<span class="badge no">no</span>';
+                const busy = lead.investigating
+                    ? `<div class="loading show"><div class="spinner"></div><span>Investigating (web scraper + LinkedIn)...</span></div>`
+                    : '';
+                const err = lead.error ? `<div class="error">${esc(lead.error)}</div>` : '';
+                return `
+                <div class="card" data-lead-id="${esc(lead.id)}">
+                    <h3>${esc(p.name || p.email || 'Lead')}</h3>
+                    <table>
+                        ${row('Email', val(p.email))}
+                        ${row('Name', val(p.name))}
+                        ${row('Company', val(p.company))}
+                        ${row('Domain', val(p.domain))}
+                        ${lead.title ? row('Title', val(lead.title)) : ''}
+                        ${lead.linkedin_url ? row('LinkedIn', `<a class="link" href="${esc(lead.linkedin_url)}" target="_blank">${esc(lead.linkedin_url)}</a>`) : ''}
+                        ${lead.source_url ? row('Source page', `<a class="link" href="${esc(lead.source_url)}" target="_blank">${esc(lead.source_url)}</a>`) : ''}
+                        <tr><th>Corporate</th><td>${corp}</td></tr>
+                        ${lead.from_sample_cookie ? '<tr><th>Source</th><td><span class="badge">cookie snapshot</span></td></tr>' : ''}
+                    </table>
+                    <div class="card-actions">
+                        <button type="button" class="investigate-btn" data-id="${esc(lead.id)}" ${lead.investigating ? 'disabled' : ''}>
+                            ${lead.investigating ? 'Investigating...' : (lead.result ? 'Re-investigate' : 'Investigate')}
+                        </button>
+                        <button type="button" class="secondary remove-btn" data-id="${esc(lead.id)}" ${lead.investigating ? 'disabled' : ''}>Remove</button>
+                    </div>
+                    ${busy}
+                    ${err}
+                    ${renderLeadInvestigation(lead.result)}
+                </div>`;
+            }).join('');
+
+            list.querySelectorAll('.investigate-btn').forEach(btn => {
+                btn.addEventListener('click', () => investigateLead(btn.dataset.id));
+            });
+            list.querySelectorAll('.remove-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.leads = state.leads.filter(l => l.id !== btn.dataset.id);
+                    saveState();
+                    renderLeadList();
+                });
+            });
+        }
+
+        function renderCompanyPanel() {
+            if (state.company.query) $('company-query').value = state.company.query;
+            $('company-results').innerHTML = renderCompanyDossier(state.company.dossier);
+        }
+
+        function renderLinkedinPanel() {
+            if (state.linkedin.url) $('linkedin-url').value = state.linkedin.url;
+            $('linkedin-results').innerHTML = renderProfiles(
+                state.linkedin.profiles,
+                state.linkedin.candidateUrls
+            );
+        }
+
+        function renderAll() {
+            renderLeadList();
+            renderCompanyPanel();
+            renderLinkedinPanel();
+        }
+
+        function applyInvestigateToShared(result) {
+            if (result.company) {
+                state.company.dossier = result.company;
+                state.company.query = (result.parsed && result.parsed.company) || state.company.query || '';
+            }
+            state.linkedin.profiles = result.profiles || [];
+            state.linkedin.candidateUrls = result.candidate_urls || [];
+            if (state.linkedin.profiles.length) {
+                const first = state.linkedin.profiles[0];
+                state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
+            } else if (state.linkedin.candidateUrls.length) {
+                state.linkedin.url = state.linkedin.candidateUrls[0];
+            }
+        }
+
+        async function postJson(url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({ ok: false, error: 'Invalid response' }));
+            if (!res.ok || data.ok === false) throw new Error(data.error || `Request failed (${res.status})`);
+            return data;
+        }
+
+        async function investigateLead(id) {
+            const lead = state.leads.find(l => l.id === id);
+            if (!lead || lead.investigating) return;
+            lead.investigating = true;
+            lead.error = null;
+            saveState();
+            renderLeadList();
+            try {
+                const data = await postJson('/api/lead/investigate', {
+                    email: lead.email,
+                    use_sample: false,
+                    max_profiles: 5,
+                });
+                lead.result = data.result;
+                lead.parsed = (data.result && data.result.parsed) || lead.parsed;
+                applyInvestigateToShared(data.result);
+            } catch (err) {
+                lead.error = err.message || String(err);
+            } finally {
+                lead.investigating = false;
+                saveState();
+                renderAll();
+            }
+        }
+
+        async function loadSampleLeads() {
+            try {
+                const res = await fetch('/api/lead/samples');
+                const data = await res.json();
+                if (!data.ok || !Array.isArray(data.samples)) return;
+                for (const s of data.samples) {
+                    const exists = state.leads.find(l => l.id === s.id);
+                    if (exists) {
+                        exists.parsed = s.parsed || exists.parsed;
+                        exists.email = s.email || exists.email;
+                        exists.linkedin_url = s.linkedin_url || exists.linkedin_url;
+                        exists.title = s.title || exists.title;
+                        exists.source_url = s.source_url || exists.source_url;
+                        exists.from_sample_cookie = true;
+                        continue;
+                    }
+                    state.leads.push({
+                        id: s.id,
+                        email: s.email,
+                        parsed: s.parsed,
+                        linkedin_url: s.linkedin_url || '',
+                        title: s.title || '',
+                        source_url: s.source_url || '',
+                        from_sample_cookie: true,
+                        result: null,
+                        investigating: false,
+                        error: null,
+                    });
+                }
+                saveState();
+            } catch (_) {}
+        }
+
+        document.querySelectorAll('nav button.tab').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+
+        $('lead-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = $('lead-email').value.trim();
+            if (!email) {
+                showError($('lead-error'), 'Enter an email');
+                return;
+            }
+            showError($('lead-error'), '');
+            const btn = $('lead-add-btn');
+            btn.disabled = true;
+            setLoading('lead-loading', true, 'Adding lead...');
+            try {
+                const data = await postJson('/api/lead/parse', { email, use_sample: false });
+                const exists = state.leads.find(l => (l.email || '').toLowerCase() === (data.email || '').toLowerCase());
+                if (exists) {
+                    exists.parsed = data.parsed;
+                    exists.email = data.email;
+                } else {
+                    state.leads.unshift({
+                        id: uid(),
+                        email: data.email,
+                        parsed: data.parsed,
+                        result: null,
+                        investigating: false,
+                        error: null,
+                    });
+                }
+                $('lead-email').value = '';
+                saveState();
+                renderLeadList();
+            } catch (err) {
+                showError($('lead-error'), err.message || String(err));
+            } finally {
+                btn.disabled = false;
+                setLoading('lead-loading', false);
+            }
+        });
+
+        $('company-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = $('company-query').value.trim();
+            if (!query) return;
+            state.company.query = query;
+            showError($('company-error'), '');
+            const btn = $('company-btn');
+            btn.disabled = true;
+            setLoading('company-loading', true);
+            try {
+                const data = await postJson('/api/company', { query });
+                state.company.dossier = data.dossier;
+                saveState();
+                renderCompanyPanel();
+            } catch (err) {
+                showError($('company-error'), err.message || String(err));
+            } finally {
+                btn.disabled = false;
+                setLoading('company-loading', false);
+            }
+        });
+
+        $('linkedin-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = $('linkedin-url').value.trim();
+            if (!url) return;
+            state.linkedin.url = url;
+            showError($('linkedin-error'), '');
+            const btn = $('linkedin-btn');
+            btn.disabled = true;
+            setLoading('linkedin-loading', true);
+            try {
+                const data = await postJson('/api/linkedin', { url });
+                state.linkedin.profiles = data.profile ? [data.profile] : [];
+                state.linkedin.candidateUrls = [];
+                saveState();
+                renderLinkedinPanel();
+            } catch (err) {
+                showError($('linkedin-error'), err.message || String(err));
+            } finally {
+                btn.disabled = false;
+                setLoading('linkedin-loading', false);
+            }
+        });
+
+        loadState();
+        if (!state.leads) state.leads = [];
+        loadSampleLeads().then(() => {
+            const hash = (location.hash || '#lead').replace('#', '');
+            const initial = ['lead', 'company', 'linkedin'].includes(hash) ? hash : (state.tab || 'lead');
+            switchTab(initial);
+        });
+    </script>
+</body>
+</html>
