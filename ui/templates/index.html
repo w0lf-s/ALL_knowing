@@ -63,7 +63,7 @@
             <div class="search-box">
                 <h2>Lead Investigation</h2>
                 <form id="lead-form" class="form-row">
-                    <input type="text" id="lead-email" placeholder="Enter viewer email (e.g. satya.nadella@microsoft.com)" required>
+                    <input type="text" id="lead-email" placeholder="Enter email (e.g. satya.nadella@microsoft.com)" required>
                     <button type="submit" id="lead-add-btn">Add Lead</button>
                 </form>
                 <div class="loading" id="lead-loading"><div class="spinner"></div><span>Adding lead...</span></div>
@@ -263,18 +263,6 @@
             return html;
         }
 
-        function renderLeadInvestigation(result) {
-            if (!result) return '';
-            let html = '<div class="lead-details">';
-            if (result.company_error) html += `<div class="error">Company: ${esc(result.company_error)}</div>`;
-            if (result.company) html += renderCompanyDossier(result.company, 'Company (web scraper)');
-            if (result.search_error) html += `<div class="error">LinkedIn search: ${esc(result.search_error)}</div>`;
-            if (result.scrape_error) html += `<div class="error">LinkedIn scrape: ${esc(result.scrape_error)}</div>`;
-            html += renderProfiles(result.profiles || [], result.candidate_urls || []);
-            html += '</div>';
-            return html;
-        }
-
         function renderLeadList() {
             const list = $('lead-list');
             if (!state.leads.length) {
@@ -283,26 +271,21 @@
             }
             list.innerHTML = state.leads.map(lead => {
                 const p = lead.parsed || {};
-                const corp = p.is_corporate
-                    ? '<span class="badge yes">yes</span>'
-                    : '<span class="badge no">no</span>';
+                const source = lead.from_sample_cookie ? 'cookie snapshot' : 'manual';
                 const busy = lead.investigating
-                    ? `<div class="loading show"><div class="spinner"></div><span>Investigating (web scraper + LinkedIn)...</span></div>`
+                    ? `<div class="loading show"><div class="spinner"></div><span>Investigating.</span></div>`
+                    : '';
+                const done = lead.result && !lead.investigating
+                    ? '<p class="muted">investigation complete</p>'
                     : '';
                 const err = lead.error ? `<div class="error">${esc(lead.error)}</div>` : '';
                 return `
                 <div class="card" data-lead-id="${esc(lead.id)}">
-                    <h3>${esc(p.name || p.email || 'Lead')}</h3>
                     <table>
-                        ${row('Email', val(p.email))}
                         ${row('Name', val(p.name))}
+                        ${row('Email', val(p.email))}
                         ${row('Company', val(p.company))}
-                        ${row('Domain', val(p.domain))}
-                        ${lead.title ? row('Title', val(lead.title)) : ''}
-                        ${lead.linkedin_url ? row('LinkedIn', `<a class="link" href="${esc(lead.linkedin_url)}" target="_blank">${esc(lead.linkedin_url)}</a>`) : ''}
-                        ${lead.source_url ? row('Source page', `<a class="link" href="${esc(lead.source_url)}" target="_blank">${esc(lead.source_url)}</a>`) : ''}
-                        <tr><th>Corporate</th><td>${corp}</td></tr>
-                        ${lead.from_sample_cookie ? '<tr><th>Source</th><td><span class="badge">cookie snapshot</span></td></tr>' : ''}
+                        ${row('Source', esc(source))}
                     </table>
                     <div class="card-actions">
                         <button type="button" class="investigate-btn" data-id="${esc(lead.id)}" ${lead.investigating ? 'disabled' : ''}>
@@ -312,7 +295,7 @@
                     </div>
                     ${busy}
                     ${err}
-                    ${renderLeadInvestigation(lead.result)}
+                    ${done}
                 </div>`;
             }).join('');
 
