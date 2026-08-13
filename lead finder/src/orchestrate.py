@@ -34,18 +34,23 @@ def _python() -> str:
     return sys.executable
 
 
-def run_company_pipeline(company: str) -> dict[str, Any]:
+def run_company_pipeline(company: str, *, fast: bool = False) -> dict[str, Any]:
+    use_groq = not fast
+    use_playwright = not fast
+    skip_news = fast
+    lite = fast
+    timeout = 60 if fast else 300
     script = (
         "import asyncio, json, sys\n"
         "from src.pipeline import run_pipeline\n"
-        "d = asyncio.run(run_pipeline(sys.argv[1], use_groq=True, use_playwright=True))\n"
+        f"d = asyncio.run(run_pipeline(sys.argv[1], use_groq={use_groq}, use_playwright={use_playwright}, skip_news={skip_news}, lite={lite}))\n"
         "print(json.dumps(d.model_dump(), default=str))\n"
     )
     result = subprocess.run(
         [_python(), "-c", script, company],
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=timeout,
         cwd=str(WEB_SCRAPER_DIR),
         env={**os.environ},
     )
@@ -68,6 +73,12 @@ def run_linkedin_scrape(urls: list[str], *, headless: bool = True) -> list[dict[
         write_urls(URLS_PATH, urls)
         settings = get_settings()
         settings.headless = headless
+        if headless:
+            settings.checkpoint_timeout_seconds = min(
+                settings.checkpoint_timeout_seconds, 20
+            )
+            settings.delay_min_seconds = min(settings.delay_min_seconds, 1.0)
+            settings.delay_max_seconds = min(settings.delay_max_seconds, 2.0)
         return run(settings)
 
 
@@ -105,7 +116,7 @@ def run_lead_finder(
         if live:
             show_step(f"Running web scraper for company: {parsed.company}", console)
         try:
-            out["company"] = run_company_pipeline(parsed.company)
+            out["company"] = run_company_pipeline(parsed.company, fast=not live)
         except Exception as exc:
             out["company_error"] = str(exc)
         if live:

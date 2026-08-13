@@ -41,6 +41,10 @@ def search_people_urls(
 
         settings = get_settings()
         settings.headless = headless
+        if headless:
+            settings.checkpoint_timeout_seconds = min(
+                settings.checkpoint_timeout_seconds, 20
+            )
 
         playwright = open_playwright()
         browser = None

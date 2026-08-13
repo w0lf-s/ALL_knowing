@@ -1,0 +1,1004 @@
+const state = {
+    tab: 'dashboard',
+    leads: [],
+    company: { query: '', dossier: null },
+    linkedin: { url: '', profiles: [], candidateUrls: [], candidates: [] },
+    reports: [],
+};
+
+let activeLeadInvestigation = {
+    leadId: null,
+    controller: null,
+};
+
+function $(id) { return document.getElementById(id); }
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function val(v, fallback = '-') {
+    if (v === null || v === undefined || v === '') return fallback;
+    return esc(v);
+}
+function money(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return esc(n);
+    if (x >= 1e12) return '$' + (x / 1e12).toFixed(1) + 'T';
+    if (x >= 1e9) return '$' + (x / 1e9).toFixed(1) + 'B';
+    if (x >= 1e6) return '$' + (x / 1e6).toFixed(1) + 'M';
+    return '$' + Math.round(x).toLocaleString();
+}
+function showError(el, msg) {
+    el.innerHTML = msg ? `<div class="error">${esc(msg)}</div>` : '';
+}
+function setLoading(id, on, text) {
+    const el = $(id);
+    if (!el) return;
+    el.classList.toggle('show', !!on);
+    if (text) {
+        const span = el.querySelector('span');
+        if (span) span.textContent = text;
+    }
+}
+function saveState() {
+    try {
+        const snapshot = {
+            tab: state.tab,
+            company: state.company,
+            linkedin: state.linkedin,
+            reports: state.reports,
+            leads: state.leads.map(lead => ({
+                id: lead.id,
+                email: lead.email,
+                parsed: lead.parsed,
+                from_sample_cookie: lead.from_sample_cookie,
+                result: lead.result,
+                error: lead.error,
+                viewOpen: !!lead.viewOpen,
+                investigating: false,
+            })),
+        };
+        sessionStorage.setItem('zuntraFrontUi', JSON.stringify(snapshot));
+    } catch (_) {}
+}
+function loadState() {
+    try {
+        const raw = sessionStorage.getItem('zuntraFrontUi');
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed.leads) {
+            state.leads = parsed.leads.map(lead => ({
+                ...lead,
+                investigating: false,
+                progressPct: 0,
+                progressStep: '',
+            }));
+        }
+        if (parsed.company) state.company = parsed.company;
+        if (parsed.linkedin) state.linkedin = parsed.linkedin;
+        if (parsed.tab) state.tab = parsed.tab;
+        if (parsed.reports) state.reports = parsed.reports;
+    } catch (_) {}
+}
+function queueSaveState() {
+    if (queueSaveState._timer) clearTimeout(queueSaveState._timer);
+    queueSaveState._timer = setTimeout(saveState, 0);
+}
+function uid() {
+    return 'lead_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+function switchTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+    document.querySelectorAll('.panel').forEach(panel => {
+        panel.classList.toggle('active', panel.id === `panel-${tab}`);
+    });
+    const overlay = $('loadingOverlay');
+    if (overlay) overlay.classList.remove('active');
+    const progressFill = $('progressFill');
+    if (progressFill) progressFill.style.width = '0%';
+    setLoading('company-loading', false);
+    if ($('company-progress')) $('company-progress').style.display = 'none';
+    if ($('company-progress-fill')) $('company-progress-fill').style.width = '0%';
+    setLoading('linkedin-loading', false);
+    if ($('linkedin-progress')) $('linkedin-progress').style.display = 'none';
+    if ($('linkedin-progress-fill')) $('linkedin-progress-fill').style.width = '0%';
+    history.replaceState(null, '', `#${tab}`);
+    saveState();
+    renderAll();
+}
+
+async function postJson(url, body, signal) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+    });
+    const data = await res.json().catch(() => ({ ok: false, error: 'Invalid response' }));
+    if (!res.ok || data.ok === false) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+}
+
+function scoreClass(score) {
+    if (score >= 75) return 'score-high';
+    if (score >= 50) return 'score-med';
+    return 'score-low';
+}
+
+function isErrorArticle(a) {
+    const t = String(a.title || '').trim().toLowerCase();
+    if (/^(?:\d{3}\s*(?:error|not found|forbidden|unauthorized)|access denied|just a moment|attention required|please wait|service unavailable|error|forbidden)$/.test(t)) return true;
+    if (/^\d{3}\s+error\b/.test(t)) return true;
+    const blob = `${a.title || ''} ${a.content || ''} ${a.summary || ''}`.toLowerCase();
+    const hits = ['the request could not be satisfied', 'request blocked', 'generated by cloudfront', '403 error', '404 error']
+        .filter(p => blob.includes(p)).length;
+    return hits >= 2 || (hits >= 1 && blob.split(/\s+/).length < 90);
+}
+
+function hasFinancialData(financials) {
+    const skip = new Set(['highlights', 'via', 'metrics_raw']);
+    return Object.entries(financials || {}).some(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== '');
+}
+
+async function loadReports() {
+    try {
+        const res = await fetch('/api/reports');
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.reports)) {
+            state.reports = data.reports;
+            saveState();
+        }
+    } catch (_) {}
+    renderDashboard();
+}
+
+async function loadStats() {
+    try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        if (data.ok) {
+            $('statTotal').textContent = data.total_companies ?? '—';
+            $('statAvg').textContent = data.avg_lead_score ?? '—';
+            $('statTop').textContent = data.top_score ?? '—';
+        }
+    } catch (_) {}
+}
+
+function renderDashboard() {
+    const grid = $('grid');
+    const empty = $('emptyState');
+    const list = state.reports;
+
+    if (!list || !list.length) {
+        grid.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+
+    empty.style.display = 'none';
+    grid.innerHTML = list.map((c, idx) => {
+        const resolved = c.resolved || {};
+        const overview = c.overview || {};
+        const financials = c.financials || {};
+        const name = resolved.name || c.query || 'Unknown';
+        const ticker = resolved.ticker || '';
+        const industry = overview.industry || overview.sector || 'Unknown Industry';
+        const desc = overview.short_description || overview.description || '';
+        const summary = desc.length > 150 ? desc.slice(0, 150) + '...' : desc;
+        const mc = money(financials.market_cap);
+        const news = ((c.news && c.news.articles) || []).filter(a => !isErrorArticle(a));
+        const newsCount = news.length;
+        const filings = (c.filings || []).length;
+
+        return `
+            <div class="card clickable" data-idx="${idx}">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">${esc(name)}${ticker ? `<span class="ticker">${esc(ticker)}</span>` : ''}</div>
+                        <div class="industry">${esc(industry)}</div>
+                    </div>
+                </div>
+                <p class="card-summary">${esc(summary)}</p>
+                <div class="card-metrics">
+                    <div>Market Cap<span>${mc}</span></div>
+                    <div>News<span>${newsCount}</span></div>
+                    <div>Filings<span>${filings}</span></div>
+                </div>
+            </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.card.clickable').forEach(card => {
+        card.addEventListener('click', () => {
+            const idx = parseInt(card.dataset.idx, 10);
+            openDetail(list[idx]);
+        });
+    });
+}
+
+function filterCards() {
+    const q = $('searchInput').value.toLowerCase();
+    const filtered = state.reports.filter(c => {
+        const name = ((c.resolved || {}).name || c.query || '').toLowerCase();
+        const ind = ((c.overview || {}).industry || '').toLowerCase();
+        return name.includes(q) || ind.includes(q);
+    });
+
+    const grid = $('grid');
+    const empty = $('emptyState');
+    if (!filtered.length) {
+        grid.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+    }
+    empty.style.display = 'none';
+
+    grid.innerHTML = filtered.map((c, idx) => {
+        const resolved = c.resolved || {};
+        const overview = c.overview || {};
+        const financials = c.financials || {};
+        const name = resolved.name || c.query || 'Unknown';
+        const ticker = resolved.ticker || '';
+        const industry = overview.industry || overview.sector || 'Unknown Industry';
+        const desc = overview.short_description || overview.description || '';
+        const summary = desc.length > 150 ? desc.slice(0, 150) + '...' : desc;
+        const mc = money(financials.market_cap);
+        const news = ((c.news && c.news.articles) || []).filter(a => !isErrorArticle(a));
+        const newsCount = news.length;
+        const filings = (c.filings || []).length;
+
+        return `
+            <div class="card clickable" data-query="${esc(c.query || '')}" data-idx="${idx}">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">${esc(name)}${ticker ? `<span class="ticker">${esc(ticker)}</span>` : ''}</div>
+                        <div class="industry">${esc(industry)}</div>
+                    </div>
+                </div>
+                <p class="card-summary">${esc(summary)}</p>
+                <div class="card-metrics">
+                    <div>Market Cap<span>${mc}</span></div>
+                    <div>News<span>${newsCount}</span></div>
+                    <div>Filings<span>${filings}</span></div>
+                </div>
+            </div>`;
+    }).join('');
+
+    grid.querySelectorAll('.card.clickable').forEach(card => {
+        card.addEventListener('click', () => {
+            const q2 = card.dataset.query;
+            const match = state.reports.find(r => r.query === q2) || filtered[parseInt(card.dataset.idx, 10)];
+            if (match) openDetail(match);
+        });
+    });
+}
+
+function openDetail(data) {
+    const resolved = data.resolved || {};
+    const overview = data.overview || {};
+    const financials = data.financials || {};
+    const news = ((data.news && data.news.articles) || []).filter(a => !isErrorArticle(a));
+
+    $('detailName').textContent = resolved.name || data.query || 'Unknown';
+    $('detailTicker').textContent = resolved.ticker || '';
+    $('detailSummary').textContent = overview.description || overview.short_description || 'No summary available.';
+    $('detailIndustry').textContent = overview.industry || overview.sector || 'N/A';
+    $('detailMarketCap').textContent = financials.market_cap ? money(financials.market_cap) : 'N/A';
+    $('detailEmployees').textContent = overview.employees || 'N/A';
+    $('detailHQ').textContent = overview.headquarters || overview.country || 'N/A';
+
+    const webEl = $('detailWebsite');
+    if (overview.website) {
+        webEl.innerHTML = `<a class="link" href="${esc(overview.website)}" target="_blank">Visit</a>`;
+    } else {
+        webEl.textContent = 'N/A';
+    }
+
+    let newsHtml = '';
+    if (news.length) {
+        news.slice(0, 5).forEach(a => {
+            const title = a.url
+                ? `<a href="${esc(a.url)}" target="_blank">${esc(a.title || 'Untitled')}</a>`
+                : esc(a.title || 'Untitled');
+            newsHtml += `<div class="news-item"><h4>${title}</h4><div class="meta">${esc(a.source_name || '')} · ${esc(a.published_at || '')}</div></div>`;
+        });
+    } else {
+        newsHtml = '<p class="muted">No recent news.</p>';
+    }
+    $('detailNews').innerHTML = newsHtml;
+
+    const bars = [];
+    if (hasFinancialData(financials)) {
+        if (financials.pe_ratio) bars.push(['P/E Ratio', Math.min(100, Math.round(financials.pe_ratio))]);
+        if (financials.beta) bars.push(['Beta', Math.min(100, Math.round(financials.beta * 25))]);
+        if (financials.profit_margin) bars.push(['Profit Margin', Math.min(100, Math.round(financials.profit_margin * 100))]);
+    }
+    $('scoreBars').innerHTML = bars.map(([label, val2]) => `
+        <div class="score-bar-item">
+            <div class="score-bar-label"><span>${label}</span><span>${val2}</span></div>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${val2}%"></div></div>
+        </div>`).join('');
+
+    $('detailModal').classList.add('active');
+}
+
+function closeModal(id) {
+    $(id).classList.remove('active');
+}
+
+function submitAnalysis(e) {
+    e.preventDefault();
+    const name = $('companyName').value.trim();
+    if (!name) return;
+
+    closeModal('analyzeModal');
+    $('loadingTitle').textContent = `Analyzing ${name}...`;
+    $('loadingStep').textContent = 'Starting pipeline...';
+    $('progressFill').style.width = '0%';
+    $('loadingOverlay').classList.add('active');
+    $('analyzeSubmit').disabled = true;
+
+    const url = `/api/company/stream?query=${encodeURIComponent(name)}&fast=1`;
+    const evtSource = new EventSource(url);
+    let error = null;
+    let done = false;
+
+    evtSource.onmessage = function(ev) {
+        try {
+            const msg = JSON.parse(ev.data);
+            $('progressFill').style.width = msg.pct + '%';
+            $('loadingStep').textContent = msg.step || '';
+            if (msg.done) {
+                done = true;
+                evtSource.close();
+                if (msg.error) { error = msg.error; finish(); return; }
+                fetchResult(name);
+            }
+        } catch (_) {}
+    };
+
+    evtSource.onerror = function() {
+        evtSource.close();
+        if (!done) { error = 'Connection lost'; finish(); }
+    };
+
+    async function fetchResult(query) {
+        try {
+            const res = await fetch('/api/reports');
+            const data = await res.json();
+            if (data.ok && data.reports) {
+                const match = data.reports.find(r => (r.query || '').toLowerCase() === query.toLowerCase());
+                if (match) {
+                    const exists = state.reports.findIndex(r => (r.query || '').toLowerCase() === query.toLowerCase());
+                    if (exists >= 0) state.reports[exists] = match;
+                    else state.reports.unshift(match);
+                    saveState();
+                    renderDashboard();
+                    loadStats();
+                    openDetail(match);
+                }
+            }
+        } catch (err) {
+            error = err.message;
+        }
+        finish();
+    }
+
+    function finish() {
+        if (error) alert(`Analysis failed: ${error}`);
+        $('progressFill').style.width = '0%';
+        $('loadingOverlay').classList.remove('active');
+        $('analyzeSubmit').disabled = false;
+        $('analyzeForm').reset();
+    }
+}
+
+function row(label, valueHtml) {
+    if (!valueHtml || valueHtml === '-') return '';
+    return `<tr><th>${esc(label)}</th><td>${valueHtml}</td></tr>`;
+}
+
+function renderCompanyDossier(dossier, titlePrefix) {
+    if (!dossier) return '<div class="card"><p class="muted">No company data yet. Investigate a lead, or search here.</p></div>';
+    const resolved = dossier.resolved || {};
+    const overview = dossier.overview || {};
+    const financials = dossier.financials || {};
+    const sources = dossier.sources_status || {};
+    const news = ((dossier.news && dossier.news.articles) || []).filter(a => !isErrorArticle(a));
+    const filings = dossier.filings || [];
+    const name = resolved.name || dossier.query || 'Company';
+    const ticker = resolved.ticker ? ` <span class="ticker">${esc(resolved.ticker)}</span>` : '';
+    let html = `
+    <div class="card">
+        <h3>${esc(titlePrefix || 'Company')} — ${esc(name)}${ticker}</h3>
+        <table>
+            ${row('Description', val(overview.description || overview.short_description))}
+            ${row('Industry', val(overview.industry))}
+            ${row('Sector', val(overview.sector))}
+            ${row('Headquarters', val(overview.headquarters))}
+            ${row('Country', val(overview.country))}
+            ${overview.website ? row('Website', `<a class="link" href="${esc(overview.website)}" target="_blank">${esc(overview.website)}</a>`) : ''}
+            ${row('Employees', val(overview.employees))}
+            ${resolved.exchanges && resolved.exchanges.length ? row('Exchange', esc(resolved.exchanges.join(', '))) : ''}
+        </table>
+    </div>`;
+    if (hasFinancialData(financials)) {
+        html += `
+        <div class="card">
+            <h3>Financials</h3>
+            <table>
+                ${financials.market_cap ? row('Market Cap', money(financials.market_cap)) : ''}
+                ${financials.revenue ? row('Revenue', money(financials.revenue)) : ''}
+                ${row('EPS', val(financials.eps))}
+                ${row('P/E Ratio', val(financials.pe_ratio))}
+                ${row('Beta', val(financials.beta))}
+                ${row('52W High', val(financials.week_52_high))}
+                ${row('52W Low', val(financials.week_52_low))}
+            </table>
+        </div>`;
+    } else if (sources.finnhub || sources.alpha_vantage) {
+        const reason = (sources.finnhub && sources.finnhub.error) || (sources.alpha_vantage && sources.alpha_vantage.error) || 'unavailable';
+        html += `<div class="card"><h3>Financials</h3><p class="muted">Not available (${esc(reason)}). Try the parent company or stock ticker.</p></div>`;
+    }
+    if (news.length) {
+        html += `<div class="card"><h3>Recent News (${news.length})</h3>`;
+        news.slice(0, 10).forEach(a => {
+            const title = a.url
+                ? `<a href="${esc(a.url)}" target="_blank">${esc(a.title || 'Untitled')}</a>`
+                : esc(a.title || 'Untitled');
+            html += `<div class="news-item"><h4>${title}</h4><div class="meta">${esc(a.source_name || '')} · ${esc(a.published_at || '')}</div>`;
+            if (a.summary) html += `<p>${esc(String(a.summary).slice(0, 200))}</p>`;
+            html += `</div>`;
+        });
+        html += `</div>`;
+    }
+    if (filings.length) {
+        html += `<div class="card"><h3>SEC Filings (${filings.length})</h3><table>`;
+        filings.slice(0, 10).forEach(f => {
+            const link = f.url ? `<a class="link" href="${esc(f.url)}" target="_blank">View</a>` : '-';
+            html += `<tr><td>${esc(f.form || '')}</td><td>${esc(f.filed_at || '')}</td><td>${link}</td></tr>`;
+        });
+        html += `</table></div>`;
+    } else if (sources.sec_edgar) {
+        const reason = (sources.sec_edgar && sources.sec_edgar.error) || 'unavailable';
+        html += `<div class="card"><h3>SEC Filings</h3><p class="muted">Not available (${esc(reason)}). Filings require a resolved stock ticker/CIK.</p></div>`;
+    }
+    return html;
+}
+
+function nameFromLinkedInUrl(url) {
+    const slug = (url || '').split('/in/')[1]?.replace(/\/$/, '').split('?')[0] || '';
+    if (!slug) return '';
+    return slug.split('-').map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '').join(' ');
+}
+
+function candidateDisplayName(url, profiles, candidates) {
+    const norm = (u) => (u || '').split('?')[0].replace(/\/$/, '').toLowerCase();
+    const key = norm(url);
+    if (candidates && candidates.length) {
+        const c = candidates.find(x => norm(x.url || x) === key);
+        if (c && c.name) return c.name;
+    }
+    if (profiles && profiles.length) {
+        const p = profiles.find(x => norm(x.linkedin_profile_url || x.url) === key);
+        if (p && p.name) return p.name;
+    }
+    return nameFromLinkedInUrl(url) || '-';
+}
+
+function renderProfiles(profiles, candidateUrls, candidates, opts) {
+    const options = opts || {};
+    let html = '';
+    const urls = candidateUrls || [];
+    const cands = candidates && candidates.length ? candidates : urls.map(u => ({ url: u, name: '' }));
+    if (cands.length) {
+        const scrapeBtn = options.leadId
+            ? `<div class="card-actions" style="margin:0.75rem 0">
+                <button type="button" class="btn btn-primary scrape-candidates-btn" data-id="${esc(options.leadId)}" ${options.scraping ? 'disabled' : ''}>
+                    ${options.scraping ? 'Scraping profiles...' : 'Scrape profiles'}
+                </button>
+               </div>
+               ${options.scraping ? `<div class="loading-inline show"><div class="spinner-sm"></div><span>Scraping LinkedIn profiles...</span></div>` : ''}`
+            : '';
+        html += `<div class="card"><h3>LinkedIn candidates (${cands.length})</h3>${scrapeBtn}<table class="candidates-table">`;
+        cands.forEach((item, i) => {
+            const url = item.url || item;
+            const name = candidateDisplayName(url, profiles, cands);
+            html += `<tr><th>${i + 1}</th><td>${esc(name)}</td><td><a class="link" href="${esc(url)}" target="_blank">${esc(url)}</a></td></tr>`;
+        });
+        html += `</table></div>`;
+    }
+    if (!profiles || !profiles.length) {
+        if (!html) html = '<div class="card"><p class="muted">No LinkedIn profiles yet. Investigate a lead, or scrape a URL here.</p></div>';
+        return html;
+    }
+    profiles.forEach((p, i) => {
+        const profileUrl = p.linkedin_profile_url || p.url;
+        html += `
+        <div class="card">
+            <h3>LinkedIn profile ${i + 1} — ${esc(p.name || 'Unknown')}</h3>
+            <table>
+                ${row('Headline', val(p.headline))}
+                ${row('Role', val(p.current_role))}
+                ${row('Company', val(p.current_company))}
+                ${row('Location', val(p.location))}
+                ${row('Email', val(p.email))}
+                ${row('Phone', val(p.phone))}
+                ${profileUrl ? row('Profile', `<a class="link" href="${esc(profileUrl)}" target="_blank">${esc(profileUrl)}</a>`) : ''}
+                ${row('About', val(p.about))}
+                ${p.error ? `<tr><th>Error</th><td style="color:#fca5a5">${esc(p.error)}</td></tr>` : ''}
+            </table>
+        </div>`;
+    });
+    return html;
+}
+
+function renderLeadList() {
+    const list = $('lead-list');
+    if (!state.leads.length) {
+        list.innerHTML = '<div class="card"><p class="muted">No leads yet. Add an email above.</p></div>';
+        return;
+    }
+    list.innerHTML = state.leads.map(lead => {
+        const p = lead.parsed || {};
+        const source = lead.from_sample_cookie ? 'cookie snapshot' : 'manual';
+        const progressPct = lead.progressPct || 0;
+        const progressStep = lead.progressStep || 'Investigating...';
+        const busy = lead.investigating
+            ? `<div class="loading-inline show"><div class="spinner-sm"></div><span class="lead-step-text" data-id="${esc(lead.id)}">${esc(progressStep)}</span></div>
+               <div class="progress-bar" style="margin-top:0.5rem"><div class="progress-fill lead-progress-fill" data-id="${esc(lead.id)}" style="width:${progressPct}%"></div></div>`
+            : '';
+        const hasResult = !!(lead.result && !lead.investigating);
+        const viewBtn = hasResult
+            ? `<button type="button" class="btn btn-secondary view-btn" data-id="${esc(lead.id)}">${lead.viewOpen ? 'Collapse ▲' : 'View ▼'}</button>`
+            : '';
+        const detailsHtml = (hasResult && lead.viewOpen) ? `
+            <div class="lead-details" data-lead-details="${esc(lead.id)}" style="margin-top:1rem">
+                ${renderCompanyDossier(lead.result.company, 'Lead Company')}
+                ${renderProfiles(
+                    lead.result.profiles || [],
+                    lead.result.candidate_urls || [],
+                    lead.result.candidates || [],
+                    { leadId: lead.id, scraping: !!lead.scraping }
+                )}
+            </div>
+        ` : '';
+        const err = lead.error ? `<div class="error">${esc(lead.error)}</div>` : '';
+        const stopBtn = lead.investigating
+            ? `<button type="button" class="btn btn-ghost stop-btn" data-id="${esc(lead.id)}">Stop</button>`
+            : '';
+        return `
+        <div class="card" data-lead-id="${esc(lead.id)}">
+            <table>
+                ${row('Name', val(p.name))}
+                ${row('Email', val(p.email))}
+                ${row('Company', val(p.company))}
+                ${row('Source', esc(source))}
+            </table>
+            <div class="card-actions">
+                <button type="button" class="btn btn-primary investigate-btn" data-id="${esc(lead.id)}" ${lead.investigating ? 'disabled' : ''}>
+                    ${lead.investigating ? 'Investigating...' : (lead.result ? 'Re-investigate' : 'Investigate')}
+                </button>
+                <button type="button" class="btn btn-secondary remove-btn" data-id="${esc(lead.id)}" ${lead.investigating ? 'disabled' : ''}>Remove</button>
+                ${stopBtn}
+                ${viewBtn}
+            </div>
+            ${busy}
+            ${err}
+            ${detailsHtml}
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('.investigate-btn').forEach(btn => {
+        btn.addEventListener('click', () => investigateLead(btn.dataset.id));
+    });
+    list.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            state.leads = state.leads.filter(l => l.id !== btn.dataset.id);
+            saveState();
+            renderLeadList();
+        });
+    });
+
+    list.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const lead = state.leads.find(l => l.id === btn.dataset.id);
+            if (!lead) return;
+            lead.viewOpen = !lead.viewOpen;
+            renderLeadList();
+            queueSaveState();
+        });
+    });
+
+    list.querySelectorAll('.stop-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            const lead = state.leads.find(l => l.id === id);
+            if (!lead || activeLeadInvestigation.leadId !== id) return;
+            fetch('/api/lead/investigate/stop', { method: 'POST' }).catch(() => {});
+            if (activeLeadInvestigation.controller) activeLeadInvestigation.controller.abort();
+            lead.investigating = false;
+            lead.progressPct = 0;
+            lead.progressStep = '';
+            activeLeadInvestigation.leadId = null;
+            activeLeadInvestigation.controller = null;
+            renderLeadList();
+        });
+    });
+
+    list.querySelectorAll('.scrape-candidates-btn').forEach(btn => {
+        btn.addEventListener('click', () => scrapeLeadCandidates(btn.dataset.id));
+    });
+}
+
+function renderCompanyPanel() {
+    if (state.company.query) $('company-query').value = state.company.query;
+    $('company-results').innerHTML = renderCompanyDossier(state.company.dossier);
+}
+
+function renderLinkedinPanel() {
+    if (state.linkedin.url) $('linkedin-url').value = state.linkedin.url;
+    $('linkedin-results').innerHTML = renderProfiles(
+        state.linkedin.profiles,
+        state.linkedin.candidateUrls,
+        state.linkedin.candidates
+    );
+}
+
+function renderAll() {
+    renderDashboard();
+    renderLeadList();
+    renderCompanyPanel();
+    renderLinkedinPanel();
+}
+
+function applyInvestigateToShared(result) {
+    if (result.company) {
+        state.company.dossier = result.company;
+        state.company.query = (result.parsed && result.parsed.company) || state.company.query || '';
+    }
+    state.linkedin.profiles = result.profiles || [];
+    state.linkedin.candidateUrls = result.candidate_urls || [];
+    state.linkedin.candidates = result.candidates || [];
+    if (state.linkedin.profiles.length) {
+        const first = state.linkedin.profiles[0];
+        state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
+    } else if (state.linkedin.candidateUrls.length) {
+        state.linkedin.url = state.linkedin.candidateUrls[0];
+    }
+}
+
+async function scrapeLeadCandidates(id) {
+    const lead = state.leads.find(l => l.id === id);
+    if (!lead || !lead.result || lead.scraping) return;
+    const urls = (lead.result.candidate_urls && lead.result.candidate_urls.length)
+        ? lead.result.candidate_urls
+        : (lead.result.candidates || []).map(c => c.url || c).filter(Boolean);
+    if (!urls.length) return;
+
+    lead.scraping = true;
+    lead.viewOpen = true;
+    lead.error = null;
+    renderLeadList();
+
+    try {
+        const data = await postJson('/api/linkedin', { urls: urls.slice(0, 5) });
+        lead.result.profiles = data.profiles || (data.profile ? [data.profile] : []);
+    } catch (err) {
+        lead.error = err.message || String(err);
+    } finally {
+        lead.scraping = false;
+        renderLeadList();
+        queueSaveState();
+    }
+}
+
+async function investigateLead(id) {
+    const lead = state.leads.find(l => l.id === id);
+    if (!lead || lead.investigating) return;
+
+    if (activeLeadInvestigation.leadId && activeLeadInvestigation.leadId !== id) {
+        const prev = state.leads.find(l => l.id === activeLeadInvestigation.leadId);
+        if (prev) prev.investigating = false;
+        if (activeLeadInvestigation.controller) activeLeadInvestigation.controller.abort();
+        activeLeadInvestigation.leadId = null;
+        activeLeadInvestigation.controller = null;
+        saveState();
+        renderLeadList();
+        try { await fetch('/api/lead/investigate/stop', { method: 'POST' }); } catch (_) {}
+    }
+
+    lead.investigating = true;
+    lead.error = null;
+    lead.viewOpen = false;
+    lead.progressPct = 0;
+    lead.progressStep = 'Starting...';
+    renderLeadList();
+
+    const controller = new AbortController();
+    activeLeadInvestigation.leadId = id;
+    activeLeadInvestigation.controller = controller;
+    const hardTimeout = setTimeout(() => {
+        fetch('/api/lead/investigate/stop', { method: 'POST' }).catch(() => {});
+        try { controller.abort(); } catch (_) {}
+    }, 120000);
+
+    const steps = [
+        [8, 'Parsing email...'],
+        [20, 'Running company pipeline...'],
+        [38, 'Fetching financial data...'],
+        [55, 'Searching LinkedIn...'],
+        [72, 'Scraping profiles...'],
+        [85, 'Wrapping up...'],
+    ];
+    const waitMsgs = ['Still working...', 'Processing results...', 'Almost there...'];
+    let stepIdx = 0;
+    let waitTick = 0;
+
+    function setLeadProgress(pct, text, rerender) {
+        lead.progressPct = pct;
+        lead.progressStep = text;
+        const fill = document.querySelector(`.lead-progress-fill[data-id="${id}"]`);
+        const stepEl = document.querySelector(`.lead-step-text[data-id="${id}"]`);
+        if (fill) fill.style.width = pct + '%';
+        if (stepEl) stepEl.textContent = text;
+        if (rerender) renderLeadList();
+    }
+
+    const interval = setInterval(() => {
+        if (stepIdx < steps.length) {
+            setLeadProgress(steps[stepIdx][0], steps[stepIdx][1], false);
+            stepIdx++;
+            return;
+        }
+        const current = lead.progressPct || 85;
+        const next = current < 96 ? current + 1 : current;
+        setLeadProgress(next, waitMsgs[waitTick % waitMsgs.length], false);
+        waitTick++;
+    }, 6000);
+
+    try {
+        const data = await postJson('/api/lead/investigate', {
+            email: lead.email,
+            use_sample: false,
+            max_profiles: 2,
+        }, controller.signal);
+        lead.result = data.result;
+        lead.parsed = (data.result && data.result.parsed) || lead.parsed;
+        const liErr = (data.result && (data.result.search_error || data.result.scrape_error)) || '';
+        if (liErr) lead.error = String(liErr);
+        setLeadProgress(100, 'Complete', false);
+    } catch (err) {
+        if (err && err.name === 'AbortError') {
+            lead.error = null;
+        } else {
+            const msg = err.message || String(err);
+            if (/timed out|stopped|failed/i.test(msg) && activeLeadInvestigation.leadId !== id) {
+                lead.error = null;
+            } else {
+                lead.error = msg;
+            }
+        }
+    } finally {
+        clearTimeout(hardTimeout);
+        clearInterval(interval);
+        lead.investigating = false;
+        lead.progressPct = 0;
+        lead.progressStep = '';
+        if (activeLeadInvestigation.leadId === id) {
+            activeLeadInvestigation.leadId = null;
+            activeLeadInvestigation.controller = null;
+        }
+        renderLeadList();
+        queueSaveState();
+    }
+}
+
+async function loadSampleLeads() {
+    try {
+        const res = await fetch('/api/lead/samples');
+        const data = await res.json();
+        if (!data.ok || !Array.isArray(data.samples)) return;
+        for (const s of data.samples) {
+            const exists = state.leads.find(l => l.id === s.id);
+            if (exists) {
+                exists.parsed = s.parsed || exists.parsed;
+                exists.email = s.email || exists.email;
+                exists.from_sample_cookie = true;
+                continue;
+            }
+            state.leads.push({
+                id: s.id,
+                email: s.email,
+                parsed: s.parsed,
+                from_sample_cookie: true,
+                result: null,
+                investigating: false,
+                error: null,
+            });
+        }
+        saveState();
+    } catch (_) {}
+}
+
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+$('searchInput').addEventListener('input', filterCards);
+
+const analyzeBtnEl = $('analyzeBtn');
+if (analyzeBtnEl) {
+    analyzeBtnEl.addEventListener('click', () => {
+        $('analyzeModal').classList.add('active');
+    });
+}
+$('analyzeClose').addEventListener('click', () => closeModal('analyzeModal'));
+$('analyzeCancel').addEventListener('click', () => closeModal('analyzeModal'));
+$('detailClose').addEventListener('click', () => closeModal('detailModal'));
+$('analyzeForm').addEventListener('submit', submitAnalysis);
+
+$('detailModal').addEventListener('click', e => {
+    if (e.target.id === 'detailModal') closeModal('detailModal');
+});
+$('analyzeModal').addEventListener('click', e => {
+    if (e.target.id === 'analyzeModal') closeModal('analyzeModal');
+});
+
+$('lead-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('lead-email').value.trim();
+    if (!email) { showError($('lead-error'), 'Enter an email'); return; }
+    showError($('lead-error'), '');
+    const btn = $('lead-add-btn');
+    btn.disabled = true;
+    setLoading('lead-loading', true, 'Adding lead...');
+    try {
+        const data = await postJson('/api/lead/parse', { email, use_sample: false });
+        const exists = state.leads.find(l => (l.email || '').toLowerCase() === (data.email || '').toLowerCase());
+        if (exists) {
+            exists.parsed = data.parsed;
+            exists.email = data.email;
+        } else {
+            state.leads.unshift({
+                id: uid(),
+                email: data.email,
+                parsed: data.parsed,
+                result: null,
+                investigating: false,
+                error: null,
+            });
+        }
+        $('lead-email').value = '';
+        saveState();
+        renderLeadList();
+    } catch (err) {
+        showError($('lead-error'), err.message || String(err));
+    } finally {
+        btn.disabled = false;
+        setLoading('lead-loading', false);
+    }
+});
+
+$('company-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const query = $('company-query').value.trim();
+    if (!query) return;
+    state.company.query = query;
+    showError($('company-error'), '');
+    const btn = $('company-btn');
+    btn.disabled = true;
+    setLoading('company-loading', true, 'Starting pipeline...');
+    $('company-progress').style.display = 'block';
+    $('company-progress-fill').style.width = '0%';
+
+    const url = `/api/company/stream?query=${encodeURIComponent(query)}&fast=0`;
+    const evtSource = new EventSource(url);
+    let done = false;
+
+    evtSource.onmessage = function(ev) {
+        try {
+            const msg = JSON.parse(ev.data);
+            $('company-progress-fill').style.width = msg.pct + '%';
+            $('company-step').textContent = msg.step || '';
+            if (msg.done) {
+                done = true;
+                evtSource.close();
+                if (msg.error) {
+                    showError($('company-error'), msg.error);
+                    finishCompany();
+                } else {
+                    fetchCompanyResult(query);
+                }
+            }
+        } catch (_) {}
+    };
+
+    evtSource.onerror = function() {
+        evtSource.close();
+        if (!done) { showError($('company-error'), 'Connection lost'); finishCompany(); }
+    };
+
+    async function fetchCompanyResult(q) {
+        try {
+            const res = await fetch('/api/reports');
+            const data = await res.json();
+            if (data.ok && data.reports) {
+                const match = data.reports.find(r => (r.query || '').toLowerCase() === q.toLowerCase());
+                if (match) state.company.dossier = match;
+            }
+            saveState();
+            renderCompanyPanel();
+        } catch (err) {
+            showError($('company-error'), err.message || String(err));
+        }
+        finishCompany();
+    }
+
+    function finishCompany() {
+        btn.disabled = false;
+        setLoading('company-loading', false);
+        $('company-progress').style.display = 'none';
+        $('company-progress-fill').style.width = '0%';
+    }
+});
+
+$('linkedin-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = $('linkedin-url').value.trim();
+    if (!url) return;
+    state.linkedin.url = url;
+    showError($('linkedin-error'), '');
+    const btn = $('linkedin-btn');
+    btn.disabled = true;
+    setLoading('linkedin-loading', true, 'Launching browser...');
+    $('linkedin-progress').style.display = 'block';
+    $('linkedin-progress-fill').style.width = '0%';
+
+    const steps = [
+        [15, 'Launching browser...'],
+        [35, 'Navigating to profile...'],
+        [55, 'Waiting for page load...'],
+        [70, 'Extracting profile data...'],
+        [85, 'Processing...'],
+    ];
+    let stepIdx = 0;
+    const interval = setInterval(() => {
+        if (stepIdx < steps.length) {
+            $('linkedin-progress-fill').style.width = steps[stepIdx][0] + '%';
+            $('linkedin-step').textContent = steps[stepIdx][1];
+            stepIdx++;
+        }
+    }, 4000);
+
+    try {
+        const data = await postJson('/api/linkedin', { url });
+        state.linkedin.profiles = data.profiles || (data.profile ? [data.profile] : []);
+        state.linkedin.candidateUrls = [];
+        saveState();
+        $('linkedin-progress-fill').style.width = '100%';
+        $('linkedin-step').textContent = 'Complete';
+        renderLinkedinPanel();
+    } catch (err) {
+        showError($('linkedin-error'), err.message || String(err));
+    } finally {
+        clearInterval(interval);
+        btn.disabled = false;
+        setLoading('linkedin-loading', false);
+        $('linkedin-progress').style.display = 'none';
+        $('linkedin-progress-fill').style.width = '0%';
+    }
+});
+
+loadState();
+if (!state.leads) state.leads = [];
+loadSampleLeads().then(() => {
+    const hash = (location.hash || '#dashboard').replace('#', '');
+    const valid = ['dashboard', 'lead', 'company', 'linkedin'];
+    const initial = valid.includes(hash) ? hash : (state.tab || 'dashboard');
+    switchTab(initial);
+});
+loadReports();
+loadStats();

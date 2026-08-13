@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zuntra Lead Intelligence</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="layout">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">ZL</div>
+                <div>
+                    <h1>Zuntra Lead Intelligence</h1>
+                    <p>AI-powered company analysis & lead scoring</p>
+                </div>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="active" data-tab="dashboard">Dashboard</button>
+            <button data-tab="lead">Lead</button>
+            <button data-tab="company">Company Search</button>
+            <button data-tab="linkedin">LinkedIn Lookup</button>
+        </nav>
+
+        <section id="panel-dashboard" class="panel active">
+            <div class="stats-bar" id="statsBar">
+                <div class="stat-card">
+                    <div class="label">Companies Tracked</div>
+                    <div class="value" id="statTotal">&mdash;</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Avg Lead Score</div>
+                    <div class="value" id="statAvg">&mdash;</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Top Score</div>
+                    <div class="value" id="statTop">&mdash;</div>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <div class="search-wrap">
+                    <input type="text" id="searchInput" placeholder="Search companies or industries...">
+                </div>
+            </div>
+
+            <div class="grid" id="grid"></div>
+            <div class="empty-state" id="emptyState" style="display:none">
+                <h3>No companies found</h3>
+                <p>Try a different search or analyze a new company.</p>
+            </div>
+        </section>
+
+        <section id="panel-lead" class="panel">
+            <div class="search-box">
+                <h2>Lead Investigation</h2>
+                <form id="lead-form" class="form-row">
+                    <input type="text" id="lead-email" placeholder="Enter email (e.g. satya.nadella@microsoft.com)" required>
+                    <button type="submit" id="lead-add-btn">Add Lead</button>
+                </form>
+                <div class="loading-inline" id="lead-loading"><div class="spinner-sm"></div><span id="lead-step">Adding lead...</span></div>
+            </div>
+            <div id="lead-error"></div>
+            <div id="lead-list"></div>
+        </section>
+
+        <section id="panel-company" class="panel">
+            <div class="search-box">
+                <h2>Company Intelligence Search</h2>
+                <form id="company-form" class="form-row">
+                    <input type="text" id="company-query" placeholder="Enter company name (e.g. Apple, HCL, Tesla)" required>
+                    <button type="submit" id="company-btn">Search</button>
+                </form>
+                <div class="loading-inline" id="company-loading"><div class="spinner-sm"></div><span id="company-step">Fetching company data...</span></div>
+                <div class="progress-bar" id="company-progress" style="display:none;margin-top:0.75rem">
+                    <div class="progress-fill" id="company-progress-fill"></div>
+                </div>
+            </div>
+            <div id="company-error"></div>
+            <div id="company-results"></div>
+        </section>
+
+        <section id="panel-linkedin" class="panel">
+            <div class="search-box">
+                <h2>LinkedIn Profile Lookup</h2>
+                <form id="linkedin-form" class="form-row">
+                    <input type="text" id="linkedin-url" placeholder="Enter LinkedIn profile URL" required>
+                    <button type="submit" id="linkedin-btn">Scrape</button>
+                </form>
+                <div class="loading-inline" id="linkedin-loading"><div class="spinner-sm"></div><span id="linkedin-step">Scraping LinkedIn profile...</span></div>
+                <div class="progress-bar" id="linkedin-progress" style="display:none;margin-top:0.75rem">
+                    <div class="progress-fill" id="linkedin-progress-fill"></div>
+                </div>
+            </div>
+            <div id="linkedin-error"></div>
+            <div id="linkedin-results"></div>
+        </section>
+    </div>
+
+    <div class="overlay" id="detailModal">
+        <div class="modal">
+            <button class="modal-close" id="detailClose">&times;</button>
+            <div class="modal-header">
+                <h2 id="detailName"></h2>
+                <span class="ticker" id="detailTicker"></span>
+            </div>
+            <div class="modal-grid">
+                <div>
+                    <div class="modal-section">
+                        <h3>Overview</h3>
+                        <p id="detailSummary"></p>
+                    </div>
+                    <div class="modal-section" style="margin-top:1.5rem">
+                        <h3>Recent News</h3>
+                        <div id="detailNews"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="metrics-panel">
+                        <h3 style="margin-bottom:1rem;color:var(--text)">Company Metrics</h3>
+                        <div class="metric-row"><span class="key">Industry</span><span id="detailIndustry"></span></div>
+                        <div class="metric-row"><span class="key">Market Cap</span><span id="detailMarketCap"></span></div>
+                        <div class="metric-row"><span class="key">Employees</span><span id="detailEmployees"></span></div>
+                        <div class="metric-row"><span class="key">Website</span><span id="detailWebsite"></span></div>
+                        <div class="metric-row"><span class="key">Headquarters</span><span id="detailHQ"></span></div>
+                    </div>
+                    <div class="score-bars" id="scoreBars"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="analyzeModal">
+        <div class="modal" style="max-width:480px">
+            <button class="modal-close" id="analyzeClose">&times;</button>
+            <div class="modal-header">
+                <h2>Analyze Company</h2>
+                <p style="color:var(--muted);font-size:0.9rem;margin-top:0.25rem">Run the intelligence pipeline to gather data and generate a company dossier.</p>
+            </div>
+            <form class="analyze-form" id="analyzeForm">
+                <div class="form-group">
+                    <label for="companyName">Company Name *</label>
+                    <input type="text" id="companyName" required placeholder="e.g. Apple, Tesla, Anthropic">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" id="analyzeCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="analyzeSubmit">Run Analysis</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-text">
+            <strong id="loadingTitle">Analyzing company...</strong>
+            <span id="loadingStep">Starting pipeline...</span>
+        </div>
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

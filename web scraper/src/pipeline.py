@@ -34,11 +34,26 @@ def _write_json(path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
 
+_progress_callback = None
+
+
+def set_progress_callback(cb):
+    global _progress_callback
+    _progress_callback = cb
+
+
+def _emit(pct: int, step: str):
+    if _progress_callback:
+        _progress_callback(pct, step)
+
+
 async def run_pipeline(
     query: str,
     *,
     use_groq: bool = True,
     use_playwright: bool = True,
+    skip_news: bool = False,
+    lite: bool = False,
 ) -> CompanyDossier:
     from pathlib import Path as _P
     _env = _P(__file__).resolve().parent.parent.parent / "not to share" / ".env"
@@ -53,7 +68,9 @@ async def run_pipeline(
     sources: dict[str, SourceResult] = {}
 
     try:
+        _emit(5, "Resolving company identity")
         ctx = await resolve_identity(http, limits, query)
+        _emit(15, "Fetching financial profile")
 
         fh = await fetch_profile_metrics(http, limits, ctx)
         sources["finnhub"] = fh
@@ -67,12 +84,19 @@ async def run_pipeline(
             if profile.get("exchange"):
                 ctx.exchanges = [profile.get("exchange")]
 
-        wiki_task = fetch_wikipedia(http, ctx)
-        sec_task = fetch_filings(http, limits, ctx)
-        gh_task = fetch_github(http, ctx)
-        rss_task = fetch_rss(http, ctx)
-
-        wiki, sec, gh, rss = await asyncio.gather(wiki_task, sec_task, gh_task, rss_task)
+        _emit(25, "Fetching public records and filings")
+        if lite:
+            wiki = await fetch_wikipedia(http, ctx)
+            sec = await fetch_filings(http, limits, ctx)
+            gh = SourceResult("github", False, error="skipped_lite")
+            rss = SourceResult("rss", False, error="skipped_lite")
+        else:
+            wiki_task = fetch_wikipedia(http, ctx)
+            sec_task = fetch_filings(http, limits, ctx)
+            gh_task = fetch_github(http, ctx)
+            rss_task = fetch_rss(http, ctx)
+            wiki, sec, gh, rss = await asyncio.gather(wiki_task, sec_task, gh_task, rss_task)
+        _emit(45, "Fetching market data")
         sources["wikipedia"] = wiki
         sources["sec_edgar"] = sec
         sources["github"] = gh
@@ -82,6 +106,7 @@ async def run_pipeline(
             ctx.wiki_title = wiki.data.get("title")
 
         av = await fetch_overview(http, limits, ctx)
+        _emit(55, "Fetching news articles")
         sources["alpha_vantage"] = av
         if av.ok and isinstance(av.data, dict):
             if av.data.get("Website") and not ctx.website:
@@ -90,74 +115,85 @@ async def run_pipeline(
             if av.data.get("Name"):
                 ctx.name = av.data.get("Name")
 
-        news_cached = load_news_day(key)
         articles: list[dict[str, Any]] = []
         company_label = ctx.name or query
-        if news_cached and isinstance(news_cached.get("articles"), list) and news_cached["articles"]:
-            cached = [a for a in news_cached["articles"] if is_english_article(a)]
-            sources["newsapi"] = SourceResult("newsapi", True, data={"cached": True})
-            sources["gnews"] = SourceResult("gnews", True, data={"cached": True})
-            if use_playwright and needs_content(cached):
+        if lite or skip_news:
+            news_cached = load_news_day(key)
+            if news_cached and isinstance(news_cached.get("articles"), list) and news_cached["articles"]:
+                articles = pick_best_articles(
+                    [a for a in news_cached["articles"] if is_english_article(a) and not is_error_article(a)],
+                    limit=8,
+                )
+                sources["newsapi"] = SourceResult("newsapi", True, data={"cached": True})
+                sources["gnews"] = SourceResult("gnews", True, data={"cached": True})
+        else:
+            news_cached = load_news_day(key)
+            if news_cached and isinstance(news_cached.get("articles"), list) and news_cached["articles"]:
+                cached = [a for a in news_cached["articles"] if is_english_article(a)]
+                sources["newsapi"] = SourceResult("newsapi", True, data={"cached": True})
+                sources["gnews"] = SourceResult("gnews", True, data={"cached": True})
+                if use_playwright and needs_content(cached):
+                    relevant = filter_relevant_articles(
+                        cached,
+                        company_name=company_label,
+                        ticker=ctx.ticker,
+                        query=query,
+                        limit=16,
+                        use_groq=use_groq,
+                    )
+                    enriched = await enrich_articles(relevant, top_n=16, enabled=True)
+                    articles = pick_best_articles(
+                        [a for a in enriched if is_english_article(a) and not is_error_article(a)],
+                        limit=8,
+                    )
+                else:
+                    articles = pick_best_articles(cached, limit=8)
+                save_news_day(
+                    key,
+                    {
+                        "query": query,
+                        "lookback_days": lookback,
+                        "articles": articles,
+                        "fetched_at": generated_at,
+                    },
+                )
+            else:
+                n_api, n_g = await asyncio.gather(
+                    fetch_newsapi(http, ctx, lookback),
+                    fetch_gnews(http, ctx, lookback),
+                )
+                sources["newsapi"] = n_api
+                sources["gnews"] = n_g
+                batches = []
+                if n_api.ok and isinstance(n_api.data, dict):
+                    batches.append(n_api.data.get("articles") or [])
+                if n_g.ok and isinstance(n_g.data, dict):
+                    batches.append(n_g.data.get("articles") or [])
+                candidates = merge_news_articles(batches, limit=30)
                 relevant = filter_relevant_articles(
-                    cached,
+                    candidates,
                     company_name=company_label,
                     ticker=ctx.ticker,
                     query=query,
                     limit=16,
                     use_groq=use_groq,
                 )
-                enriched = await enrich_articles(relevant, top_n=16, enabled=True)
+                enriched = await enrich_articles(relevant, top_n=16, enabled=use_playwright)
                 articles = pick_best_articles(
                     [a for a in enriched if is_english_article(a) and not is_error_article(a)],
                     limit=8,
                 )
-            else:
-                articles = pick_best_articles(cached, limit=8)
-            save_news_day(
-                key,
-                {
-                    "query": query,
-                    "lookback_days": lookback,
-                    "articles": articles,
-                    "fetched_at": generated_at,
-                },
-            )
-        else:
-            n_api, n_g = await asyncio.gather(
-                fetch_newsapi(http, ctx, lookback),
-                fetch_gnews(http, ctx, lookback),
-            )
-            sources["newsapi"] = n_api
-            sources["gnews"] = n_g
-            batches = []
-            if n_api.ok and isinstance(n_api.data, dict):
-                batches.append(n_api.data.get("articles") or [])
-            if n_g.ok and isinstance(n_g.data, dict):
-                batches.append(n_g.data.get("articles") or [])
-            candidates = merge_news_articles(batches, limit=30)
-            relevant = filter_relevant_articles(
-                candidates,
-                company_name=company_label,
-                ticker=ctx.ticker,
-                query=query,
-                limit=16,
-                use_groq=use_groq,
-            )
-            enriched = await enrich_articles(relevant, top_n=16, enabled=use_playwright)
-            articles = pick_best_articles(
-                [a for a in enriched if is_english_article(a) and not is_error_article(a)],
-                limit=8,
-            )
-            save_news_day(
-                key,
-                {
-                    "query": query,
-                    "lookback_days": lookback,
-                    "articles": articles,
-                    "fetched_at": generated_at,
-                },
-            )
+                save_news_day(
+                    key,
+                    {
+                        "query": query,
+                        "lookback_days": lookback,
+                        "articles": articles,
+                        "fetched_at": generated_at,
+                    },
+                )
 
+        _emit(80, "Building company dossier")
         raw_path = RAW_DIR / f"{key}.json"
         raw_bundle = {
             "query": query,
@@ -178,6 +214,7 @@ async def run_pipeline(
         }
         _write_json(raw_path, raw_bundle)
 
+        _emit(90, "Merging and saving results")
         company_path = COMPANY_DIR / f"{key}.json"
         dossier = merge_dossier(
             query,
@@ -193,10 +230,12 @@ async def run_pipeline(
         if use_groq:
             dossier = arrange_text(dossier)
 
+        _emit(95, "Validating data")
         dossier = CompanyDossier.model_validate(dossier.model_dump())
         payload = dossier.model_dump()
         _write_json(company_path, payload)
         _write_json(LASTRUN, payload)
+        _emit(100, "Complete")
         return dossier
     finally:
         await http.aclose()

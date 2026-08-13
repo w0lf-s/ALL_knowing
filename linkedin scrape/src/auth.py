@@ -91,11 +91,11 @@ def _perform_login(page: Page, settings: Settings) -> None:
         )
 
 
-def _session_still_valid(context: BrowserContext) -> bool:
+def _session_still_valid(context: BrowserContext, timeout_ms: int = 45000) -> bool:
     page = context.new_page()
     try:
-        page.goto(FEED_URL, wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(2000)
+        page.goto(FEED_URL, wait_until="domcontentloaded", timeout=timeout_ms)
+        page.wait_for_timeout(1500)
         return _is_logged_in(page)
     except Exception:
         return False
@@ -109,6 +109,9 @@ def create_authenticated_context(
     ensure_dirs()
     if not settings.linkedin_email or not settings.linkedin_password:
         raise RuntimeError("LINKEDIN_EMAIL and LINKEDIN_PASSWORD must be set in .env")
+
+    if settings.headless:
+        settings.checkpoint_timeout_seconds = min(settings.checkpoint_timeout_seconds, 20)
 
     launch_args = {
         "headless": settings.headless,
@@ -127,7 +130,8 @@ def create_authenticated_context(
             storage_state=str(state_file),
             viewport={"width": 1280, "height": 900},
         )
-        if _session_still_valid(context):
+        session_timeout = 20000 if settings.headless else 45000
+        if _session_still_valid(context, timeout_ms=session_timeout):
             return browser, context
         context.close()
 
