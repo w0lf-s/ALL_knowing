@@ -88,6 +88,7 @@ def run_lead_finder(
     max_profiles: int = 5,
     no_company: bool = False,
     no_scrape: bool = False,
+    no_search: bool = False,
     headless: bool = True,
     live: bool = True,
 ) -> dict[str, Any]:
@@ -126,7 +127,9 @@ def run_lead_finder(
         if live:
             show_company(None, out["company_error"], console)
 
-    if not parsed.name:
+    if no_search:
+        out["skip_search"] = True
+    elif not parsed.name:
         out["search_error"] = "Could not derive a person name from the email local-part"
         out["skip_search"] = True
         if live:

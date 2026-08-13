@@ -2,7 +2,7 @@ const state = {
     tab: 'dashboard',
     leads: [],
     company: { query: '', dossier: null },
-    linkedin: { url: '', profiles: [], candidateUrls: [], candidates: [] },
+    linkedin: { url: '', company: '', profiles: [], candidateUrls: [], candidates: [] },
     reports: [],
     bookmarks: [],
 };
@@ -737,13 +737,14 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
     const urls = candidateUrls || [];
     const cands = candidates && candidates.length ? candidates : urls.map(u => ({ url: u, name: '' }));
     if (cands.length) {
-        const scrapeBtn = options.leadId
+        const scrapeBtn = options.allowScrape
             ? `<div class="card-actions" style="margin:0.75rem 0">
-                <button type="button" class="btn btn-primary scrape-candidates-btn" data-id="${esc(options.leadId)}" ${options.scraping ? 'disabled' : ''}>
+                <button type="button" class="btn btn-primary scrape-candidates-btn" ${options.scraping ? 'disabled' : ''}>
                     ${options.scraping ? 'Scraping profiles...' : 'Scrape profiles'}
                 </button>
                </div>
-               ${options.scraping ? `<div class="loading-inline show"><div class="spinner-sm"></div><span>Scraping LinkedIn profiles...</span></div>` : ''}`
+               ${options.scraping ? `<div class="loading-inline show"><div class="spinner-sm"></div><span class="linkedin-scrape-step">${esc(options.scrapeStep || 'Scraping LinkedIn profiles...')}</span></div>
+               <div class="progress-bar" style="margin-top:0.5rem"><div class="progress-fill linkedin-scrape-fill" style="width:${options.scrapePct || 8}%"></div></div>` : ''}`
             : '';
         html += `<div class="card"><h3>LinkedIn candidates (${cands.length})</h3>${scrapeBtn}<table class="candidates-table">`;
         cands.forEach((item, i) => {
@@ -778,6 +779,38 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
     return html;
 }
 
+function renderLeadLinkedInAction(lead) {
+    const p = (lead && lead.parsed) || {};
+    if (!p.name) return '<div class="card"><p class="muted">No linkedin profile found</p></div>';
+    return `<div class="card">
+        <h3>LinkedIn</h3>
+        <div class="card-actions" style="margin-top:0">
+            <button type="button" class="btn btn-primary linkedin-lookup-btn" data-id="${esc(lead.id)}">Look up on LinkedIn</button>
+        </div>
+    </div>`;
+}
+
+function isLinkedInProfileUrl(value) {
+    return /linkedin\.com\/in\//i.test(String(value || ''));
+}
+
+function openLinkedInFromLead(id) {
+    const lead = state.leads.find(l => l.id === id);
+    if (!lead) return;
+    const p = lead.parsed || {};
+    const name = String(p.name || '').trim();
+    if (!name) return;
+    const company = p.is_corporate && p.company ? String(p.company).trim() : '';
+    state.linkedin.url = name;
+    state.linkedin.company = company;
+    state.linkedin.profiles = [];
+    state.linkedin.candidates = [];
+    state.linkedin.candidateUrls = [];
+    saveState();
+    switchTab('linkedin');
+    $('linkedin-form').requestSubmit();
+}
+
 function renderLeadList() {
     const list = $('lead-list');
     if (!state.leads.length) {
@@ -805,12 +838,7 @@ function renderLeadList() {
                     newsReady: !!lead.newsLookedUp,
                     emptyError: lead.result.company_error || '',
                 })}
-                ${renderProfiles(
-                    lead.result.profiles || [],
-                    lead.result.candidate_urls || [],
-                    lead.result.candidates || [],
-                    { leadId: lead.id, scraping: !!lead.scraping }
-                )}
+                ${renderLeadLinkedInAction(lead)}
             </div>
         ` : '';
         const err = lead.error ? `<div class="error">${esc(lead.error)}</div>` : '';
@@ -881,8 +909,8 @@ function renderLeadList() {
         });
     });
 
-    list.querySelectorAll('.scrape-candidates-btn').forEach(btn => {
-        btn.addEventListener('click', () => scrapeLeadCandidates(btn.dataset.id));
+    list.querySelectorAll('.linkedin-lookup-btn').forEach(btn => {
+        btn.addEventListener('click', () => openLinkedInFromLead(btn.dataset.id));
     });
 
     list.querySelectorAll('.lookup-news-btn').forEach(btn => {
@@ -898,11 +926,19 @@ function renderCompanyPanel() {
 
 function renderLinkedinPanel() {
     if (state.linkedin.url) $('linkedin-url').value = state.linkedin.url;
+    if ($('linkedin-company')) $('linkedin-company').value = state.linkedin.company || '';
     $('linkedin-results').innerHTML = renderProfiles(
         state.linkedin.profiles,
         state.linkedin.candidateUrls,
-        state.linkedin.candidates
+        state.linkedin.candidates,
+        { allowScrape: true, scraping: !!state.linkedin.scraping, scrapePct: state.linkedin.scrapePct || 0, scrapeStep: state.linkedin.scrapeStep || '' }
     );
+    const results = $('linkedin-results');
+    if (results) {
+        results.querySelectorAll('.scrape-candidates-btn').forEach(btn => {
+            btn.addEventListener('click', () => scrapeLinkedInCandidates());
+        });
+    }
 }
 
 function renderAll() {
@@ -916,15 +952,6 @@ function applyInvestigateToShared(result) {
     if (result.company) {
         state.company.dossier = result.company;
         state.company.query = (result.parsed && result.parsed.company) || state.company.query || '';
-    }
-    state.linkedin.profiles = result.profiles || [];
-    state.linkedin.candidateUrls = result.candidate_urls || [];
-    state.linkedin.candidates = result.candidates || [];
-    if (state.linkedin.profiles.length) {
-        const first = state.linkedin.profiles[0];
-        state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
-    } else if (state.linkedin.candidateUrls.length) {
-        state.linkedin.url = state.linkedin.candidateUrls[0];
     }
 }
 
@@ -968,28 +995,57 @@ async function lookupLeadNews(id) {
     }
 }
 
-async function scrapeLeadCandidates(id) {
-    const lead = state.leads.find(l => l.id === id);
-    if (!lead || !lead.result || lead.scraping) return;
-    const urls = (lead.result.candidate_urls && lead.result.candidate_urls.length)
-        ? lead.result.candidate_urls
-        : (lead.result.candidates || []).map(c => c.url || c).filter(Boolean);
+async function scrapeLinkedInCandidates() {
+    if (state.linkedin.scraping) return;
+    const urls = (state.linkedin.candidateUrls && state.linkedin.candidateUrls.length)
+        ? state.linkedin.candidateUrls
+        : (state.linkedin.candidates || []).map(c => c.url || c).filter(Boolean);
     if (!urls.length) return;
-
-    lead.scraping = true;
-    lead.viewOpen = true;
-    lead.error = null;
-    renderLeadList();
-
+    state.linkedin.scraping = true;
+    state.linkedin.scrapePct = 8;
+    state.linkedin.scrapeStep = 'Launching browser...';
+    showError($('linkedin-error'), '');
+    renderLinkedinPanel();
+    const steps = [
+        [18, 'Launching browser...'],
+        [36, 'Opening profiles...'],
+        [54, 'Waiting for page load...'],
+        [72, 'Extracting profile data...'],
+        [88, 'Processing...'],
+    ];
+    let stepIdx = 0;
+    const interval = setInterval(() => {
+        if (stepIdx >= steps.length) return;
+        const pct = steps[stepIdx][0];
+        const text = steps[stepIdx][1];
+        state.linkedin.scrapePct = pct;
+        state.linkedin.scrapeStep = text;
+        const fill = document.querySelector('.linkedin-scrape-fill');
+        const stepEl = document.querySelector('.linkedin-scrape-step');
+        if (fill) fill.style.width = pct + '%';
+        if (stepEl) stepEl.textContent = text;
+        stepIdx++;
+    }, 4000);
     try {
         const data = await postJson('/api/linkedin', { urls: urls.slice(0, 5) });
-        lead.result.profiles = data.profiles || (data.profile ? [data.profile] : []);
+        state.linkedin.profiles = data.profiles || (data.profile ? [data.profile] : []);
+        if (state.linkedin.profiles.length) {
+            const first = state.linkedin.profiles[0];
+            state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
+        }
+        state.linkedin.scrapePct = 100;
+        state.linkedin.scrapeStep = 'Complete';
+        const fill = document.querySelector('.linkedin-scrape-fill');
+        if (fill) fill.style.width = '100%';
     } catch (err) {
-        lead.error = err.message || String(err);
+        showError($('linkedin-error'), err.message || String(err));
     } finally {
-        lead.scraping = false;
-        renderLeadList();
-        queueSaveState();
+        clearInterval(interval);
+        state.linkedin.scraping = false;
+        state.linkedin.scrapePct = 0;
+        state.linkedin.scrapeStep = '';
+        saveState();
+        renderLinkedinPanel();
     }
 }
 
@@ -1027,11 +1083,9 @@ async function investigateLead(id) {
 
     const steps = [
         [8, 'Parsing email...'],
-        [20, 'Running company pipeline...'],
-        [38, 'Fetching financial data...'],
-        [55, 'Searching LinkedIn...'],
-        [72, 'Scraping profiles...'],
-        [85, 'Wrapping up...'],
+        [28, 'Running company pipeline...'],
+        [52, 'Fetching financial data...'],
+        [78, 'Wrapping up...'],
     ];
     const waitMsgs = ['Still working...', 'Processing results...', 'Almost there...'];
     let stepIdx = 0;
@@ -1263,23 +1317,33 @@ $('company-form').addEventListener('submit', (e) => {
 
 $('linkedin-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const url = $('linkedin-url').value.trim();
-    if (!url) return;
-    state.linkedin.url = url;
+    const raw = $('linkedin-url').value.trim();
+    if (!raw) return;
+    const company = ($('linkedin-company') && $('linkedin-company').value.trim()) || '';
+    state.linkedin.url = raw;
+    state.linkedin.company = company;
     showError($('linkedin-error'), '');
     const btn = $('linkedin-btn');
     btn.disabled = true;
-    setLoading('linkedin-loading', true, 'Launching browser...');
+    const asUrl = isLinkedInProfileUrl(raw);
+    setLoading('linkedin-loading', true, asUrl ? 'Launching browser...' : 'Searching LinkedIn...');
     $('linkedin-progress').style.display = 'block';
     $('linkedin-progress-fill').style.width = '0%';
 
-    const steps = [
-        [15, 'Launching browser...'],
-        [35, 'Navigating to profile...'],
-        [55, 'Waiting for page load...'],
-        [70, 'Extracting profile data...'],
-        [85, 'Processing...'],
-    ];
+    const steps = asUrl
+        ? [
+            [15, 'Launching browser...'],
+            [35, 'Navigating to profile...'],
+            [55, 'Waiting for page load...'],
+            [70, 'Extracting profile data...'],
+            [85, 'Processing...'],
+        ]
+        : [
+            [20, 'Opening LinkedIn search...'],
+            [45, 'Reading people results...'],
+            [70, 'Collecting profile links...'],
+            [88, 'Finishing search...'],
+        ];
     let stepIdx = 0;
     const interval = setInterval(() => {
         if (stepIdx < steps.length) {
@@ -1290,9 +1354,17 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     }, 4000);
 
     try {
-        const data = await postJson('/api/linkedin', { url });
-        state.linkedin.profiles = data.profiles || (data.profile ? [data.profile] : []);
-        state.linkedin.candidateUrls = [];
+        if (asUrl) {
+            const data = await postJson('/api/linkedin', { url: raw });
+            state.linkedin.profiles = data.profiles || (data.profile ? [data.profile] : []);
+            state.linkedin.candidateUrls = [];
+            state.linkedin.candidates = [];
+        } else {
+            const data = await postJson('/api/linkedin/search', { name: raw, company, max_profiles: 5 });
+            state.linkedin.candidates = data.candidates || [];
+            state.linkedin.candidateUrls = data.candidate_urls || [];
+            state.linkedin.profiles = [];
+        }
         saveState();
         $('linkedin-progress-fill').style.width = '100%';
         $('linkedin-step').textContent = 'Complete';

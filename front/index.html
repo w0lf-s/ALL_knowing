@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zuntra Lead Intelligence</title>
-    <link rel="stylesheet" href="css/style.css?v=30">
+    <link rel="stylesheet" href="css/style.css?v=32">
 </head>
 <body>
     <div class="layout">
@@ -83,8 +83,9 @@
             <div class="search-box">
                 <h2>LinkedIn Profile Lookup</h2>
                 <form id="linkedin-form" class="form-row">
-                    <input type="text" id="linkedin-url" placeholder="Enter LinkedIn profile URL" required>
-                    <button type="submit" id="linkedin-btn">Scrape</button>
+                    <input type="text" id="linkedin-url" placeholder="Name or LinkedIn URL" required>
+                    <input type="text" id="linkedin-company" placeholder="Company (optional)">
+                    <button type="submit" id="linkedin-btn">Search</button>
                 </form>
                 <div class="loading-inline" id="linkedin-loading"><div class="spinner-sm"></div><span id="linkedin-step">Scraping LinkedIn profile...</span></div>
                 <div class="progress-bar" id="linkedin-progress" style="display:none;margin-top:0.75rem">
@@ -157,6 +158,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=30"></script>
+    <script src="js/app.js?v=32"></script>
 </body>
 </html>

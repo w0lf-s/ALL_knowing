@@ -140,8 +140,20 @@ result = run_lead_finder(
     headless=True,
     live=False,
     no_scrape=True,
+    no_search=True,
 )
 print(json.dumps(result, default=str))
+"""
+
+_LI_SEARCH = """
+import json, sys
+sys.path.insert(0, r"{lf_root}")
+from src.linkedin_search import search_people_urls
+name = sys.argv[1]
+company = sys.argv[2] if len(sys.argv) > 2 else ""
+max_profiles = int(sys.argv[3]) if len(sys.argv) > 3 else 5
+found = search_people_urls(name, company, max_profiles=max_profiles, headless=True)
+print(json.dumps(found or [], default=str))
 """
 
 _LEAD_SAMPLES = """
@@ -555,6 +567,50 @@ def api_linkedin():
         })
     except subprocess.TimeoutExpired:
         return _json_error("LinkedIn scraper timed out", 504)
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
+@app.post("/api/linkedin/search")
+def api_linkedin_search():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or data.get("query") or "").strip()
+    company = str(data.get("company") or "").strip()
+    max_profiles = int(data.get("max_profiles") or 5)
+    if not name:
+        return _json_error("Enter a name or LinkedIn URL")
+    try:
+        script = _LI_SEARCH.format(
+            lf_root=str(LEAD_FINDER_DIR).replace("\\", "\\\\")
+        )
+        proc = subprocess.run(
+            [
+                str(VENV_PYTHON),
+                "-c",
+                script,
+                name,
+                company,
+                str(max(1, min(max_profiles, 10))),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            cwd=str(LEAD_FINDER_DIR),
+            env={**os.environ, "HEADLESS": "true"},
+        )
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            return _json_error(err.splitlines()[-1] if err else "LinkedIn search failed")
+        payload = _last_json_line(proc.stdout)
+        candidates = payload if isinstance(payload, list) else []
+        urls = [c.get("url") for c in candidates if isinstance(c, dict) and c.get("url")]
+        return jsonify({
+            "ok": True,
+            "candidates": candidates,
+            "candidate_urls": urls,
+        })
+    except subprocess.TimeoutExpired:
+        return _json_error("LinkedIn search timed out", 504)
     except Exception as exc:
         return _json_error(str(exc))
 
