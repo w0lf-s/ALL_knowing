@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zuntra Lead Intelligence</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=30">
 </head>
 <body>
     <div class="layout">
@@ -13,7 +13,7 @@
                 <div class="logo-icon">ZL</div>
                 <div>
                     <h1>Zuntra Lead Intelligence</h1>
-                    <p>AI-powered company analysis & lead scoring</p>
+                    <p>AI-powered company analysis</p>
                 </div>
             </div>
         </header>
@@ -32,12 +32,8 @@
                     <div class="value" id="statTotal">&mdash;</div>
                 </div>
                 <div class="stat-card">
-                    <div class="label">Avg Lead Score</div>
-                    <div class="value" id="statAvg">&mdash;</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">Top Score</div>
-                    <div class="value" id="statTop">&mdash;</div>
+                    <div class="label">Bookmarks</div>
+                    <div class="value" id="statBookmarks">&mdash;</div>
                 </div>
             </div>
 
@@ -113,16 +109,14 @@
                         <h3>Overview</h3>
                         <p id="detailSummary"></p>
                     </div>
-                    <div class="modal-section" style="margin-top:1.5rem">
-                        <h3>Recent News</h3>
-                        <div id="detailNews"></div>
-                    </div>
                 </div>
                 <div>
                     <div class="metrics-panel">
                         <h3 style="margin-bottom:1rem;color:var(--text)">Company Metrics</h3>
                         <div class="metric-row"><span class="key">Industry</span><span id="detailIndustry"></span></div>
                         <div class="metric-row"><span class="key">Market Cap</span><span id="detailMarketCap"></span></div>
+                        <div class="metric-row"><span class="key">52W High</span><span id="detailHigh"></span></div>
+                        <div class="metric-row"><span class="key">52W Low</span><span id="detailLow"></span></div>
                         <div class="metric-row"><span class="key">Employees</span><span id="detailEmployees"></span></div>
                         <div class="metric-row"><span class="key">Website</span><span id="detailWebsite"></span></div>
                         <div class="metric-row"><span class="key">Headquarters</span><span id="detailHQ"></span></div>
@@ -163,6 +157,6 @@
         </div>
     </div>
 
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=30"></script>
 </body>
 </html>

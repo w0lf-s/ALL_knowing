@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import quote
-
 from rapidfuzz import fuzz
 
 from src.adapters import CompanyContext, SourceResult
@@ -60,10 +58,58 @@ def _search_candidates(ctx: CompanyContext) -> list[str]:
                 seen.add(mid.lower())
                 out.append(mid)
 
-    add(ctx.query)
-    add(ctx.name)
     add(ctx.wiki_title)
+    add(ctx.name)
+    add(ctx.query)
     return out
+
+
+def is_disambiguation(data: dict | None) -> bool:
+    if not isinstance(data, dict):
+        return False
+    summary = data.get("summary") or {}
+    if str(summary.get("type") or "").lower() == "disambiguation":
+        return True
+    extract = str(summary.get("extract") or "")
+    if re.search(r"\bmay refer to\b", extract, re.I):
+        return True
+    desc = str(summary.get("description") or "").lower()
+    return "disambiguation" in desc or "same term" in desc
+
+
+_GENERIC_LEAD = re.compile(r"^an?\s+[\w'-]+\s+is\b", re.I)
+_GENERIC_DESC = re.compile(
+    r"\b(watercraft|vessel|species|river|given name|surname|film|album|plant|fruit|animal)\b",
+    re.I,
+)
+_COMPANY_TITLE = re.compile(
+    r"\((company|brand)\)|\b(inc|ltd|limited|corp|holdings|electronics|lifestyle)\b",
+    re.I,
+)
+
+
+def is_generic_topic(data: dict | None, query: str = "") -> bool:
+    if not isinstance(data, dict) or not query:
+        return False
+    title = str(data.get("title") or "").strip().lower()
+    q = query.strip().lower()
+    if title not in {q, q.rstrip("s")}:
+        return False
+    summary = data.get("summary") or {}
+    extract = str(summary.get("extract") or "").strip()
+    if _GENERIC_LEAD.match(extract):
+        return True
+    desc = str(summary.get("description") or "")
+    return bool(_GENERIC_DESC.search(desc))
+
+
+def search_titles(data: dict | None) -> list[str]:
+    if not isinstance(data, dict):
+        return []
+    search = data.get("search")
+    if isinstance(search, list) and len(search) > 1 and isinstance(search[1], list):
+        return [str(t).strip() for t in search[1] if str(t).strip()]
+    return []
 
 
 def _pick_title(titles: list[str], target: str) -> str | None:
@@ -72,23 +118,41 @@ def _pick_title(titles: list[str], target: str) -> str | None:
     target_l = target.lower().strip()
     best: tuple[int, str] | None = None
     for title in titles:
-        score = fuzz.token_set_ratio(target_l, title.lower())
-        if title.lower().startswith(target_l[: min(8, len(target_l))]):
+        tl = title.lower().strip()
+        if "disambiguation" in tl:
+            continue
+        score = fuzz.token_set_ratio(target_l, tl)
+        if tl.startswith(target_l[: min(8, len(target_l))]):
             score += 15
+        if _COMPANY_TITLE.search(title):
+            score += 35
+        if tl == target_l and len(target_l) <= 8:
+            score -= 30
         if best is None or score > best[0]:
             best = (score, title)
-    if best and best[0] >= 55:
+    if best and best[0] >= 40:
         return best[1]
-    return titles[0]
+    usable = [t for t in titles if "disambiguation" not in t.lower()]
+    return usable[0] if usable else None
 
 
 async def fetch_wikipedia(http: HttpClient, ctx: CompanyContext) -> SourceResult:
     candidates = _search_candidates(ctx)
     if not candidates:
         return SourceResult("wikipedia", False, error="no_match")
-    cache_key = (ctx.name or ctx.query).lower()
-    cached = get_cached("wikipedia", cache_key, 7 * 86400)
-    if cached is not None:
+    keys = []
+    for raw in (ctx.query, ctx.name):
+        if raw and raw.lower() not in keys:
+            keys.append(raw.lower())
+    q = (ctx.query or "").strip().lower()
+    n = (ctx.name or "").strip().lower()
+    for cache_key in keys:
+        cached = get_cached("wikipedia", cache_key, 7 * 86400)
+        if cached is None or is_disambiguation(cached) or is_generic_topic(cached, ctx.query or ""):
+            continue
+        cached_title = str(cached.get("title") or "").strip().lower()
+        if n and q and n != q and cached_title == q:
+            continue
         return SourceResult("wikipedia", True, data=cached)
     target = _strip_legal(ctx.name or ctx.query)
     try:
@@ -116,12 +180,49 @@ async def fetch_wikipedia(http: HttpClient, ctx: CompanyContext) -> SourceResult
                 break
         if not chosen_title:
             return SourceResult("wikipedia", False, error="no_match")
-        summary = await http.get_json(
-            f"https://en.wikipedia.org/api/rest_v1/page/summary/{quote(chosen_title.replace(' ', '_'))}",
+        page = await http.get_json(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "prop": "extracts|description|pageimages|info",
+                "exintro": 1,
+                "explaintext": 1,
+                "inprop": "url",
+                "pithumbsize": 200,
+                "titles": chosen_title,
+                "format": "json",
+                "redirects": 1,
+            },
             headers=WIKI_HEADERS,
+            retries=2,
+            timeout=12.0,
         )
-        data = {"title": chosen_title, "summary": summary, "search": last_search}
-        set_cached("wikipedia", cache_key, data)
+        pages = ((page or {}).get("query") or {}).get("pages") or {}
+        rec = next(iter(pages.values()), None) if isinstance(pages, dict) else None
+        if not rec or rec.get("missing") is not None:
+            return SourceResult("wikipedia", False, error="no_match")
+        extract = rec.get("extract")
+        desc = rec.get("description")
+        page_type = "disambiguation" if (isinstance(extract, str) and re.search(r"\bmay refer to\b", extract, re.I)) else "standard"
+        thumb = rec.get("thumbnail") if isinstance(rec.get("thumbnail"), dict) else None
+        summary = {
+            "title": rec.get("title") or chosen_title,
+            "extract": extract,
+            "description": desc,
+            "type": page_type,
+            "thumbnail": {"source": thumb.get("source")} if thumb and thumb.get("source") else None,
+            "content_urls": {
+                "desktop": {"page": rec.get("fullurl") or rec.get("canonicalurl")},
+            },
+        }
+        data = {"title": rec.get("title") or chosen_title, "summary": summary, "search": last_search}
+        if (
+            page_type != "disambiguation"
+            and not is_disambiguation(data)
+            and not is_generic_topic(data, ctx.query or "")
+        ):
+            for cache_key in keys or [chosen_title.lower()]:
+                set_cached("wikipedia", cache_key, data)
         return SourceResult("wikipedia", True, data=data)
     except Exception as exc:
         return SourceResult("wikipedia", False, error=sanitize_error(exc))

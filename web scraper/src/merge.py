@@ -8,6 +8,7 @@ from rapidfuzz import fuzz
 from src.adapters import CompanyContext, SourceResult
 from src.adapters.alpha_vantage import map_overview_financials
 from src.adapters.finnhub import domain_from_web
+from src.adapters.yahoo import map_yahoo_financials, map_yahoo_overview
 from src.cache import normalize_url
 from src.news_enrich import sanitize_article_fields
 from src.schema import (
@@ -52,6 +53,52 @@ def _add_via(via: list[str], name: str) -> None:
         via.append(name)
 
 
+_HQ_IN = re.compile(
+    r"headquartered in ([A-Z][A-Za-z .'-]+?)(?:\s+and\s|\s*,|\s*\.|$)",
+    re.I,
+)
+_FOUNDED_ON = re.compile(
+    r"(?:established|founded)\s+(?:on\s+)?(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{4}|\d{4})",
+    re.I,
+)
+_NATION = (
+    ("indian", "India"),
+    ("american", "United States"),
+    ("british", "United Kingdom"),
+    ("japanese", "Japan"),
+    ("chinese", "China"),
+    ("german", "Germany"),
+    ("french", "France"),
+    ("korean", "South Korea"),
+    ("australian", "Australia"),
+    ("canadian", "Canada"),
+)
+
+
+def _wiki_facts(extract: str | None, short: str | None) -> dict[str, str]:
+    text = f"{extract or ''} {short or ''}".strip()
+    out: dict[str, str] = {}
+    if not text:
+        return out
+    hq = _HQ_IN.search(extract or "")
+    if hq:
+        city = hq.group(1).strip(" ,.")
+        if city:
+            out["city"] = city
+            out["headquarters"] = city
+    for adj, country in _NATION:
+        if re.search(rf"\b{adj}\b", text, re.I):
+            out["country"] = country
+            break
+    founded = _FOUNDED_ON.search(extract or "")
+    if founded:
+        out["founded"] = founded.group(1).strip()
+    short_s = (short or "").strip()
+    if short_s and "same term" not in short_s.lower() and "may refer" not in short_s.lower():
+        out["industry"] = short_s
+    return out
+
+
 def merge_dossier(
     query: str,
     ctx: CompanyContext,
@@ -67,7 +114,9 @@ def merge_dossier(
     for name in (
         "finnhub",
         "alpha_vantage",
+        "yahoo",
         "sec_edgar",
+        "nse",
         "wikipedia",
         "github",
         "rss",
@@ -82,7 +131,9 @@ def merge_dossier(
 
     fh = sources.get("finnhub")
     av = sources.get("alpha_vantage")
+    yh = sources.get("yahoo")
     sec = sources.get("sec_edgar")
+    nse = sources.get("nse")
     wiki = sources.get("wikipedia")
     gh = sources.get("github")
     rss = sources.get("rss")
@@ -97,25 +148,32 @@ def merge_dossier(
     if av and av.ok and isinstance(av.data, dict):
         av_data = av.data
 
+    yh_quote: dict[str, Any] = {}
+    yh_over: dict[str, Any] = {}
+    if yh and yh.ok and isinstance(yh.data, dict):
+        yh_quote = yh.data.get("quote") or {}
+        if yh_quote:
+            yh_over = map_yahoo_overview(yh_quote)
+
     wiki_summary: dict[str, Any] = {}
     if wiki and wiki.ok and isinstance(wiki.data, dict):
         wiki_summary = wiki.data.get("summary") or {}
         if not ctx.wiki_title:
             ctx.wiki_title = wiki.data.get("title")
 
-    website = _first(profile.get("weburl"), av_data.get("Website"), ctx.website)
+    website = _first(profile.get("weburl"), av_data.get("Website"), yh_over.get("website"), ctx.website)
     domain = ctx.domain or domain_from_web(website)
     if not domain:
         domain = domain_from_web(profile.get("weburl"))
 
     resolved = Resolved(
-        ticker=_first(ctx.ticker, av_data.get("Symbol")),
+        ticker=_first(ctx.ticker, av_data.get("Symbol"), yh.data.get("symbol") if yh and yh.ok and isinstance(yh.data, dict) else None),
         cik=ctx.cik,
-        name=_first(ctx.name, profile.get("name"), av_data.get("Name"), wiki_summary.get("title")),
+        name=_first(ctx.name, profile.get("name"), av_data.get("Name"), yh_over.get("name"), wiki_summary.get("title")),
         website=website,
         wiki_title=ctx.wiki_title,
         domain=domain,
-        exchanges=[x for x in [profile.get("exchange"), av_data.get("Exchange")] if x],
+        exchanges=[x for x in [profile.get("exchange"), av_data.get("Exchange"), yh_over.get("exchange")] if x],
         sic=ctx.sic,
         sic_description=ctx.sic_description,
     )
@@ -137,38 +195,53 @@ def merge_dossier(
 
     overview_via: list[str] = []
     overview = Overview(
-        legal_name=_first(profile.get("name"), av_data.get("Name"), resolved.name),
-        description=_first(wiki_summary.get("extract"), av_data.get("Description")),
-        short_description=_first(wiki_summary.get("description"), (av_data.get("Description") or "")[:280] or None),
-        industry=_first(profile.get("finnhubIndustry"), av_data.get("Industry")),
-        sector=_first(av_data.get("Sector")),
+        legal_name=_first(profile.get("name"), av_data.get("Name"), yh_over.get("name"), resolved.name),
+        description=_first(wiki_summary.get("extract"), av_data.get("Description"), yh_over.get("description")),
+        short_description=_first(wiki_summary.get("description"), (av_data.get("Description") or yh_over.get("description") or "")[:280] or None),
+        industry=_first(profile.get("finnhubIndustry"), av_data.get("Industry"), yh_over.get("industry")),
+        sector=_first(av_data.get("Sector"), yh_over.get("sector")),
         headquarters=_first(
             av_data.get("Address"),
+            yh_over.get("address"),
             ", ".join([x for x in [profile.get("city"), profile.get("state"), profile.get("country")] if x]) or None,
         ),
-        country=_first(profile.get("country"), av_data.get("Country")),
-        city=profile.get("city"),
+        country=_first(profile.get("country"), av_data.get("Country"), yh_over.get("country")),
+        city=_first(profile.get("city"), yh_over.get("city")),
         state=profile.get("state"),
-        address=av_data.get("Address"),
+        address=_first(av_data.get("Address"), yh_over.get("address")),
         founded=None,
         ipo_date=_first(profile.get("ipo"), av_data.get("IPODate")),
-        employees=_first(profile.get("employeeTotal"), av_data.get("FullTimeEmployees")),
+        employees=_first(profile.get("employeeTotal"), av_data.get("FullTimeEmployees"), yh_over.get("employees")),
         website=website,
-        phone=_first(profile.get("phone"), av_data.get("Phone")),
+        phone=_first(profile.get("phone"), av_data.get("Phone"), yh_over.get("phone")),
         logo_url=profile.get("logo"),
         thumbnail_url=wiki_summary.get("thumbnail", {}).get("source") if isinstance(wiki_summary.get("thumbnail"), dict) else None,
         wikipedia_url=(wiki_summary.get("content_urls") or {}).get("desktop", {}).get("page") if isinstance(wiki_summary.get("content_urls"), dict) else None,
-        currency=_first(profile.get("currency"), av_data.get("Currency")),
+        currency=_first(profile.get("currency"), av_data.get("Currency"), yh_over.get("currency")),
         share_class=None,
         isin=av_data.get("ISIN"),
         cusip=None,
         figi=None,
         via=overview_via,
     )
+    facts = _wiki_facts(wiki_summary.get("extract"), wiki_summary.get("description"))
+    if not overview.industry and facts.get("industry"):
+        overview.industry = facts["industry"]
+    if not overview.city and facts.get("city"):
+        overview.city = facts["city"]
+    if not overview.country and facts.get("country"):
+        overview.country = facts["country"]
+    if not overview.headquarters:
+        hq_bits = [x for x in [overview.city or facts.get("city"), overview.country or facts.get("country")] if x]
+        overview.headquarters = facts.get("headquarters") or (", ".join(hq_bits) or None)
+    if not overview.founded and facts.get("founded"):
+        overview.founded = facts["founded"]
     if profile:
         _add_via(overview_via, "finnhub")
     if av_data:
         _add_via(overview_via, "alpha_vantage")
+    if yh_over:
+        _add_via(overview_via, "yahoo")
     if wiki_summary:
         _add_via(overview_via, "wikipedia")
     if sec and sec.ok:
@@ -210,6 +283,17 @@ def merge_dossier(
                 setattr(fin, dst_k, _num(metrics.get(src_k)))
         fin.metrics_raw = {**(fin.metrics_raw or {}), **{k: metrics[k] for k in list(metrics.keys())[:40]}}
         _add_via(fin_via, "finnhub")
+    if yh_quote:
+        mapped_yh = map_yahoo_financials(yh_quote)
+        for k, v in mapped_yh.items():
+            if k == "currency":
+                continue
+            if hasattr(fin, k) and getattr(fin, k) is None and v is not None:
+                if k in ("dividend_date", "ex_dividend_date", "market_cap", "revenue"):
+                    setattr(fin, k, v)
+                else:
+                    setattr(fin, k, _num(v))
+        _add_via(fin_via, "yahoo")
 
     filings: list[Filing] = []
     if sec and sec.ok and isinstance(sec.data, dict):
@@ -281,6 +365,19 @@ def merge_dossier(
         other.sort(key=_filed_key, reverse=True)
         insider.sort(key=_filed_key, reverse=True)
         filings = (major[:12] + other[:5] + insider[:3])[:20]
+
+    if nse and nse.ok and isinstance(nse.data, dict):
+        for item in (nse.data.get("items") or [])[:20]:
+            filings.append(
+                Filing(
+                    form=item.get("form") or "NSE",
+                    filed_at=item.get("filed_at"),
+                    accession_number=None,
+                    title=item.get("title"),
+                    url=item.get("url"),
+                    via=["nse"],
+                )
+            )
 
     press: list[PressItem] = []
     if rss and rss.ok and isinstance(rss.data, dict):

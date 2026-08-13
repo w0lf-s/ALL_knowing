@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urljoin
 
 import feedparser
@@ -48,30 +49,38 @@ async def fetch_rss(http: HttpClient, ctx: CompanyContext) -> SourceResult:
     cached = get_cached("rss", cache_key, 6 * 3600)
     if cached is not None:
         return SourceResult("rss", True, data=cached)
-    items: list[dict] = []
-    used_feed: str | None = None
-    for feed_url in candidate_feeds(ctx.domain, ctx.website)[:12]:
+
+    async def probe(feed_url: str):
         try:
-            text = await http.get_text(feed_url, headers={"User-Agent": "company-intel-cli/1.0"})
+            text = await http.get_text(
+                feed_url,
+                headers={"User-Agent": "company-intel-cli/1.0"},
+                retries=1,
+                timeout=5.0,
+            )
             parsed = feedparser.parse(text)
             if not parsed.entries:
-                continue
-            used_feed = feed_url
+                return None
+            items = []
             for entry in parsed.entries[:20]:
                 items.append(
                     {
                         "title": getattr(entry, "title", None),
                         "summary": getattr(entry, "summary", None),
                         "url": normalize_url(getattr(entry, "link", None)),
-                        "published_at": getattr(entry, "published", None) or getattr(entry, "updated", None),
+                        "published_at": getattr(entry, "published", None)
+                        or getattr(entry, "updated", None),
                         "feed_url": feed_url,
                     }
                 )
-            break
+            return {"feed_url": feed_url, "items": items}
         except Exception:
-            continue
-    if not items:
+            return None
+
+    feeds = candidate_feeds(ctx.domain, ctx.website)[:6]
+    results = await asyncio.gather(*[probe(u) for u in feeds])
+    hit = next((r for r in results if r and r.get("items")), None)
+    if not hit:
         return SourceResult("rss", False, error="no_feed_found")
-    data = {"feed_url": used_feed, "items": items}
-    set_cached("rss", cache_key, data)
-    return SourceResult("rss", True, data=data)
+    set_cached("rss", cache_key, hit)
+    return SourceResult("rss", True, data=hit)

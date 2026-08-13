@@ -157,7 +157,9 @@ class Github(BaseModel):
 class SourcesStatus(BaseModel):
     finnhub: SourceStatus = Field(default_factory=SourceStatus)
     alpha_vantage: SourceStatus = Field(default_factory=SourceStatus)
+    yahoo: SourceStatus = Field(default_factory=SourceStatus)
     sec_edgar: SourceStatus = Field(default_factory=SourceStatus)
+    nse: SourceStatus = Field(default_factory=SourceStatus)
     wikipedia: SourceStatus = Field(default_factory=SourceStatus)
     github: SourceStatus = Field(default_factory=SourceStatus)
     rss: SourceStatus = Field(default_factory=SourceStatus)

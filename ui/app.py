@@ -1,9 +1,11 @@
 import asyncio
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -257,6 +259,21 @@ def api_lead_investigate():
         return _json_error(str(exc))
 
 
+@app.post("/api/company/news")
+def api_company_news():
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query") or "").strip()
+    if not query:
+        return _json_error("Enter a company name")
+    try:
+        from src.pipeline import fetch_company_news
+
+        payload = asyncio.run(fetch_company_news(query, use_groq=True, use_playwright=True))
+        return jsonify({"ok": True, **payload})
+    except Exception as exc:
+        return _json_error(str(exc))
+
+
 @app.post("/api/company")
 def api_company():
     data = request.get_json(silent=True) or {}
@@ -296,6 +313,34 @@ def api_lead_investigate_stop():
     return jsonify({"ok": True})
 
 
+def _fresh_company_dossier(query: str, max_age_s: float = 6 * 3600):
+    from src.paths import COMPANY_DIR, company_key
+
+    path = COMPANY_DIR / f"{company_key(query)}.json"
+    if not path.exists():
+        return None
+    if time.time() - path.stat().st_mtime > max_age_s:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    ticker = ((data.get("resolved") or {}).get("ticker") or "")
+    fin = data.get("financials") or {}
+    overview = data.get("overview") or {}
+    desc = str(overview.get("description") or "")
+    short = str(overview.get("short_description") or "").lower()
+    if re.search(r"\bmay refer to\b", desc, re.I) or "same term" in short or "disambiguation" in short:
+        return None
+    if re.match(rf"^an?\s+{re.escape(query.strip())}\s+is\b", desc, re.I):
+        return None
+    skip = {"highlights", "via", "metrics_raw"}
+    has_fin = any(k not in skip and v not in (None, "", []) for k, v in fin.items())
+    if not ticker or len(ticker.split(".")[0]) > 5 or not has_fin:
+        return None
+    return data
+
+
 @app.get("/api/company/stream")
 def api_company_stream():
     query = request.args.get("query", "").strip()
@@ -312,9 +357,14 @@ def api_company_stream():
 
     def run():
         try:
+            cached = _fresh_company_dossier(query)
+            if cached:
+                q.put({"pct": 40, "step": "Loading cached dossier"})
+                q.put({"pct": 100, "step": "Complete", "done": True, "ok": True})
+                return
             from src.pipeline import run_pipeline, set_progress_callback
             set_progress_callback(progress_cb)
-            dossier = asyncio.run(run_pipeline(
+            asyncio.run(run_pipeline(
                 query,
                 use_groq=not fast,
                 use_playwright=not fast,
@@ -345,6 +395,123 @@ def api_company_stream():
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     })
+
+
+_bookmark_refresh_lock = threading.Lock()
+_bookmark_refreshing: set[str] = set()
+_BOOKMARK_MAX_AGE_S = 24 * 3600
+
+
+def _dossier_from_path(path):
+    if path is None or not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _query_matches_dossier(data: dict, query: str) -> bool:
+    q = query.lower().strip()
+    if not q or not isinstance(data, dict):
+        return False
+    from src.paths import company_key
+
+    want = company_key(query)
+    resolved = data.get("resolved") or {}
+    fields = [data.get("query"), resolved.get("ticker"), resolved.get("name")]
+    for raw in fields:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        if text.lower() == q or company_key(text) == want:
+            return True
+    return False
+
+
+def _find_company_file(query: str):
+    from src.paths import COMPANY_DIR, company_key
+
+    q = str(query or "").strip()
+    if not q:
+        return None
+    direct = COMPANY_DIR / f"{company_key(q)}.json"
+    if direct.exists():
+        return direct
+    if not COMPANY_DIR.exists():
+        return None
+    for path in COMPANY_DIR.glob("*.json"):
+        data = _dossier_from_path(path)
+        if data and _query_matches_dossier(data, q):
+            return path
+    return None
+
+
+def _refresh_bookmarked_job(queries: list[str]):
+    from src.pipeline import run_pipeline
+
+    for query in queries:
+        try:
+            path = _find_company_file(query)
+            run_q = query
+            prev = _dossier_from_path(path) if path else None
+            if prev and prev.get("query"):
+                run_q = str(prev["query"])
+            asyncio.run(
+                run_pipeline(
+                    run_q,
+                    use_groq=False,
+                    use_playwright=False,
+                    skip_news=True,
+                    lite=True,
+                )
+            )
+        except Exception:
+            pass
+        finally:
+            with _bookmark_refresh_lock:
+                _bookmark_refreshing.discard(str(query).lower().strip())
+
+
+@app.post("/api/company/refresh")
+def api_company_refresh():
+    data = request.get_json(silent=True) or {}
+    raw = data.get("queries") or []
+    queries: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        q = str(item or "").strip()
+        if not q:
+            continue
+        key = q.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(q)
+        if len(queries) >= 15:
+            break
+    reports = []
+    stale = []
+    now = time.time()
+    for q in queries:
+        path = _find_company_file(q)
+        existing = _dossier_from_path(path) if path else None
+        if existing:
+            reports.append(existing)
+        fresh = bool(path and (now - path.stat().st_mtime) <= _BOOKMARK_MAX_AGE_S)
+        if not fresh:
+            stale.append(q)
+    to_run: list[str] = []
+    with _bookmark_refresh_lock:
+        for q in stale:
+            key = q.lower().strip()
+            if key in _bookmark_refreshing:
+                continue
+            _bookmark_refreshing.add(key)
+            to_run.append(q)
+    if to_run:
+        threading.Thread(target=_refresh_bookmarked_job, args=(to_run,), daemon=True).start()
+    return jsonify({"ok": True, "reports": reports, "refreshing": to_run})
 
 
 @app.post("/api/linkedin")
@@ -417,12 +584,9 @@ def api_stats():
                 reports.append(json.loads(f.read_text(encoding="utf-8")))
             except Exception:
                 pass
-    total = len(reports)
     return jsonify({
         "ok": True,
-        "total_companies": total,
-        "avg_lead_score": "—",
-        "top_score": "—",
+        "total_companies": len(reports),
     })
 
 

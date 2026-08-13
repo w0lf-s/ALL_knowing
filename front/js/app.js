@@ -4,6 +4,7 @@ const state = {
     company: { query: '', dossier: null },
     linkedin: { url: '', profiles: [], candidateUrls: [], candidates: [] },
     reports: [],
+    bookmarks: [],
 };
 
 let activeLeadInvestigation = {
@@ -19,16 +20,71 @@ function val(v, fallback = '-') {
     if (v === null || v === undefined || v === '') return fallback;
     return esc(v);
 }
-function money(n) {
+function currencySymbol(code) {
+    const c = String(code || 'USD').toUpperCase();
+    if (c === 'INR') return '₹';
+    if (c === 'EUR') return '€';
+    if (c === 'GBP') return '£';
+    if (c === 'JPY' || c === 'CNY') return '¥';
+    if (c === 'KRW') return '₩';
+    if (c === 'AUD') return 'A$';
+    if (c === 'CAD') return 'C$';
+    if (c === 'HKD') return 'HK$';
+    return '$';
+}
+function currencyCode(dossier) {
+    const overview = (dossier && dossier.overview) || {};
+    const resolved = (dossier && dossier.resolved) || {};
+    if (overview.currency) return overview.currency;
+    const t = String(resolved.ticker || '').toUpperCase();
+    if (/\.(NS|BO|NSE|BSE)$/.test(t)) return 'INR';
+    return 'USD';
+}
+function money(n, code) {
     const x = Number(n);
+    const s = currencySymbol(code);
     if (!Number.isFinite(x)) return esc(n);
-    if (x >= 1e12) return '$' + (x / 1e12).toFixed(1) + 'T';
-    if (x >= 1e9) return '$' + (x / 1e9).toFixed(1) + 'B';
-    if (x >= 1e6) return '$' + (x / 1e6).toFixed(1) + 'M';
-    return '$' + Math.round(x).toLocaleString();
+    if (x >= 1e12) return s + (x / 1e12).toFixed(1) + 'T';
+    if (x >= 1e9) return s + (x / 1e9).toFixed(1) + 'B';
+    if (x >= 1e6) return s + (x / 1e6).toFixed(1) + 'M';
+    return s + Math.round(x).toLocaleString();
+}
+function price(n, code) {
+    const x = Number(n);
+    const s = currencySymbol(code);
+    if (!Number.isFinite(x)) return esc(n);
+    return s + x.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+function fmtNum(n, digits) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return String(n ?? '');
+    return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
 }
 function showError(el, msg) {
     el.innerHTML = msg ? `<div class="error">${esc(msg)}</div>` : '';
+}
+function showCompanyError(msg) {
+    const el = $('company-error');
+    if (!msg) { el.innerHTML = ''; return; }
+    const marker = 'Did you mean ';
+    const idx = msg.indexOf(marker);
+    if (idx === -1) {
+        showError(el, msg);
+        return;
+    }
+    const names = [...msg.slice(idx + marker.length).matchAll(/"([^"]+)"/g)].map(m => m[1]);
+    if (!names.length) {
+        showError(el, msg);
+        return;
+    }
+    const buttons = names.map(n => `<button type="button" class="suggest-link" data-q="${esc(n)}">"${esc(n)}"</button>`).join(',');
+    el.innerHTML = `<div class="error">${esc(msg.slice(0, idx))}${esc(marker)}${buttons}</div>`;
+    el.querySelectorAll('.suggest-link').forEach(btn => {
+        btn.addEventListener('click', () => {
+            $('company-query').value = btn.dataset.q;
+            $('company-form').requestSubmit();
+        });
+    });
 }
 function setLoading(id, on, text) {
     const el = $(id);
@@ -46,6 +102,7 @@ function saveState() {
             company: state.company,
             linkedin: state.linkedin,
             reports: state.reports,
+            bookmarks: state.bookmarks || [],
             leads: state.leads.map(lead => ({
                 id: lead.id,
                 email: lead.email,
@@ -54,6 +111,7 @@ function saveState() {
                 result: lead.result,
                 error: lead.error,
                 viewOpen: !!lead.viewOpen,
+                newsLookedUp: !!lead.newsLookedUp,
                 investigating: false,
             })),
         };
@@ -69,6 +127,8 @@ function loadState() {
             state.leads = parsed.leads.map(lead => ({
                 ...lead,
                 investigating: false,
+                newsLookedUp: !!lead.newsLookedUp,
+                newsLoading: false,
                 progressPct: 0,
                 progressStep: '',
             }));
@@ -77,6 +137,7 @@ function loadState() {
         if (parsed.linkedin) state.linkedin = parsed.linkedin;
         if (parsed.tab) state.tab = parsed.tab;
         if (parsed.reports) state.reports = parsed.reports;
+        if (Array.isArray(parsed.bookmarks)) state.bookmarks = parsed.bookmarks;
     } catch (_) {}
 }
 function queueSaveState() {
@@ -122,10 +183,96 @@ async function postJson(url, body, signal) {
     return data;
 }
 
-function scoreClass(score) {
-    if (score >= 75) return 'score-high';
-    if (score >= 50) return 'score-med';
-    return 'score-low';
+function companyKey(c) {
+    return String((c && (c.query || ((c.resolved || {}).ticker) || ((c.resolved || {}).name))) || '').toLowerCase().trim();
+}
+
+function leadCompanyRecord(lead) {
+    if (lead && lead.result && lead.result.company) return lead.result.company;
+    const name = (lead && lead.parsed && lead.parsed.company) || '';
+    if (!name) return null;
+    return { query: name, resolved: { name }, overview: {}, financials: {}, filings: [] };
+}
+
+function leadCompanyKey(lead) {
+    const rec = leadCompanyRecord(lead);
+    return rec ? companyKey(rec) : '';
+}
+
+function isBookmarked(c) {
+    const key = companyKey(c);
+    return !!key && (state.bookmarks || []).includes(key);
+}
+
+function knownCompanyKeys() {
+    const keys = new Set();
+    (state.reports || []).forEach(r => {
+        const k = companyKey(r);
+        if (k) keys.add(k);
+    });
+    (state.leads || []).forEach(lead => {
+        const k = leadCompanyKey(lead);
+        if (k) keys.add(k);
+    });
+    if (state.company && state.company.dossier) {
+        const k = companyKey(state.company.dossier);
+        if (k) keys.add(k);
+    }
+    return keys;
+}
+
+function dashboardCompanies() {
+    const byKey = new Map();
+    (state.reports || []).forEach(r => {
+        const k = companyKey(r);
+        if (k) byKey.set(k, r);
+    });
+    (state.leads || []).forEach(lead => {
+        const rec = leadCompanyRecord(lead);
+        if (!rec || !isBookmarked(rec)) return;
+        const k = companyKey(rec);
+        if (!k) return;
+        const existing = byKey.get(k);
+        if (!existing || (hasFinancialData(rec.financials) && !hasFinancialData(existing.financials))) {
+            byKey.set(k, rec);
+        }
+    });
+    return [...byKey.values()];
+}
+
+function bookmarkButton(key, on) {
+    return `<button type="button" class="bookmark-btn${on ? ' active' : ''}" data-key="${esc(key)}" aria-label="Bookmark">
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                        <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.1l-7.25-3.9-7.25 3.9V5A1.25 1.25 0 0 1 6 3.75z" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    </svg>
+                </button>`;
+}
+
+function bindBookmarkButtons(root) {
+    if (!root) return;
+    root.querySelectorAll('.bookmark-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleBookmark(btn.dataset.key);
+        });
+    });
+}
+
+function toggleBookmark(key) {
+    if (!key) return;
+    const cur = state.bookmarks || [];
+    const adding = !cur.includes(key);
+    state.bookmarks = adding ? cur.concat(key) : cur.filter(k => k !== key);
+    saveState();
+    renderDashboard();
+    renderLeadList();
+    renderCompanyPanel();
+    if (adding) refreshBookmarkedCompanies();
+}
+
+function refreshStats() {
+    if ($('statTotal')) $('statTotal').textContent = String(dashboardCompanies().length);
+    if ($('statBookmarks')) $('statBookmarks').textContent = String((state.bookmarks || []).length);
 }
 
 function isErrorArticle(a) {
@@ -143,6 +290,48 @@ function hasFinancialData(financials) {
     return Object.entries(financials || {}).some(([k, v]) => !skip.has(k) && v !== null && v !== undefined && v !== '');
 }
 
+function mergeReports(reports) {
+    if (!Array.isArray(reports)) return;
+    for (const rec of reports) {
+        const k = companyKey(rec);
+        if (!k) continue;
+        const idx = (state.reports || []).findIndex(r => companyKey(r) === k);
+        if (idx >= 0) state.reports[idx] = rec;
+        else {
+            state.reports = state.reports || [];
+            state.reports.unshift(rec);
+        }
+    }
+}
+
+let bookmarkPollTimer = null;
+function pollBookmarkRefresh(count) {
+    if (bookmarkPollTimer) clearTimeout(bookmarkPollTimer);
+    let tries = 0;
+    const max = Math.min(12, 2 + Number(count || 1) * 3);
+    function tick() {
+        tries += 1;
+        loadReports().then(() => {
+            if (tries < max) bookmarkPollTimer = setTimeout(tick, 15000);
+        });
+    }
+    bookmarkPollTimer = setTimeout(tick, 12000);
+}
+
+async function refreshBookmarkedCompanies() {
+    const queries = (state.bookmarks || []).filter(Boolean);
+    if (!queries.length) return;
+    try {
+        const data = await postJson('/api/company/refresh', { queries });
+        if (data.ok && Array.isArray(data.reports) && data.reports.length) {
+            mergeReports(data.reports);
+            saveState();
+            renderDashboard();
+        }
+        if (data.refreshing && data.refreshing.length) pollBookmarkRefresh(data.refreshing.length);
+    } catch (_) {}
+}
+
 async function loadReports() {
     try {
         const res = await fetch('/api/reports');
@@ -156,169 +345,168 @@ async function loadReports() {
 }
 
 async function loadStats() {
-    try {
-        const res = await fetch('/api/stats');
-        const data = await res.json();
-        if (data.ok) {
-            $('statTotal').textContent = data.total_companies ?? '—';
-            $('statAvg').textContent = data.avg_lead_score ?? '—';
-            $('statTop').textContent = data.top_score ?? '—';
-        }
-    } catch (_) {}
+    refreshStats();
+}
+
+function dashboardCardHtml(c) {
+    const resolved = c.resolved || {};
+    const overview = c.overview || {};
+    const financials = c.financials || {};
+    const name = resolved.name || c.query || 'Unknown';
+    const ticker = resolved.ticker || '';
+    const industry = overview.industry || overview.sector || 'Unknown Industry';
+    const desc = overview.short_description || overview.description || '';
+    const summary = desc.length > 150 ? desc.slice(0, 150) + '...' : desc;
+    const mc = financials.market_cap ? money(financials.market_cap, currencyCode(c)) : '—';
+    const key = companyKey(c);
+    const on = isBookmarked(c);
+    const metrics = on ? `
+            <div class="card-metrics">
+                <div>Market Cap<span>${mc}</span></div>
+                <div>Filings<span>${(c.filings || []).length}</span></div>
+            </div>` : '';
+    return `
+        <div class="card clickable" data-key="${esc(key)}">
+            <div class="card-header">
+                <div>
+                    <div class="card-title">${esc(name)}${ticker ? `<span class="ticker">${esc(ticker)}</span>` : ''}</div>
+                    <div class="industry">${esc(industry)}</div>
+                </div>
+                ${bookmarkButton(key, on)}
+            </div>
+            <p class="card-summary">${esc(summary)}</p>
+            ${metrics}
+        </div>`;
 }
 
 function renderDashboard() {
     const grid = $('grid');
     const empty = $('emptyState');
-    const list = state.reports;
-
-    if (!list || !list.length) {
+    const q = (($('searchInput') && $('searchInput').value) || '').toLowerCase().trim();
+    let list = dashboardCompanies();
+    if (q) {
+        list = list.filter(c => {
+            const name = ((c.resolved || {}).name || c.query || '').toLowerCase();
+            const ind = ((c.overview || {}).industry || '').toLowerCase();
+            return name.includes(q) || ind.includes(q);
+        });
+    }
+    const known = knownCompanyKeys();
+    state.bookmarks = (state.bookmarks || []).filter(k => known.has(k));
+    refreshStats();
+    if (!list.length) {
         grid.innerHTML = '';
         empty.style.display = 'block';
         return;
     }
-
     empty.style.display = 'none';
-    grid.innerHTML = list.map((c, idx) => {
-        const resolved = c.resolved || {};
-        const overview = c.overview || {};
-        const financials = c.financials || {};
-        const name = resolved.name || c.query || 'Unknown';
-        const ticker = resolved.ticker || '';
-        const industry = overview.industry || overview.sector || 'Unknown Industry';
-        const desc = overview.short_description || overview.description || '';
-        const summary = desc.length > 150 ? desc.slice(0, 150) + '...' : desc;
-        const mc = money(financials.market_cap);
-        const news = ((c.news && c.news.articles) || []).filter(a => !isErrorArticle(a));
-        const newsCount = news.length;
-        const filings = (c.filings || []).length;
-
-        return `
-            <div class="card clickable" data-idx="${idx}">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">${esc(name)}${ticker ? `<span class="ticker">${esc(ticker)}</span>` : ''}</div>
-                        <div class="industry">${esc(industry)}</div>
-                    </div>
-                </div>
-                <p class="card-summary">${esc(summary)}</p>
-                <div class="card-metrics">
-                    <div>Market Cap<span>${mc}</span></div>
-                    <div>News<span>${newsCount}</span></div>
-                    <div>Filings<span>${filings}</span></div>
-                </div>
-            </div>`;
-    }).join('');
-
+    const pinned = list.filter(isBookmarked);
+    const rest = list.filter(c => !isBookmarked(c));
+    let html = pinned.map(dashboardCardHtml).join('');
+    if (pinned.length && rest.length) html += '<hr class="grid-split">';
+    html += rest.map(dashboardCardHtml).join('');
+    grid.innerHTML = html;
+    bindBookmarkButtons(grid);
     grid.querySelectorAll('.card.clickable').forEach(card => {
         card.addEventListener('click', () => {
-            const idx = parseInt(card.dataset.idx, 10);
-            openDetail(list[idx]);
+            const match = dashboardCompanies().find(r => companyKey(r) === card.dataset.key);
+            if (match) openDetail(match);
         });
     });
 }
 
 function filterCards() {
-    const q = $('searchInput').value.toLowerCase();
-    const filtered = state.reports.filter(c => {
-        const name = ((c.resolved || {}).name || c.query || '').toLowerCase();
-        const ind = ((c.overview || {}).industry || '').toLowerCase();
-        return name.includes(q) || ind.includes(q);
-    });
+    renderDashboard();
+}
 
-    const grid = $('grid');
-    const empty = $('emptyState');
-    if (!filtered.length) {
-        grid.innerHTML = '';
-        empty.style.display = 'block';
-        return;
+function factsFromText(text) {
+    const t = String(text || '');
+    const out = {};
+    const hq = t.match(/headquartered in ([A-Z][A-Za-z .'-]+?)(?:\s+and\s|\s*,|\.|$)/i);
+    if (hq) out.hq = hq[1].trim();
+    const nations = [
+        [/indian/i, 'India'],
+        [/american/i, 'United States'],
+        [/british/i, 'United Kingdom'],
+        [/japanese/i, 'Japan'],
+        [/chinese/i, 'China'],
+        [/german/i, 'Germany'],
+        [/french/i, 'France'],
+        [/korean/i, 'South Korea'],
+    ];
+    for (const [re, name] of nations) {
+        if (re.test(t)) { out.country = name; break; }
     }
-    empty.style.display = 'none';
-
-    grid.innerHTML = filtered.map((c, idx) => {
-        const resolved = c.resolved || {};
-        const overview = c.overview || {};
-        const financials = c.financials || {};
-        const name = resolved.name || c.query || 'Unknown';
-        const ticker = resolved.ticker || '';
-        const industry = overview.industry || overview.sector || 'Unknown Industry';
-        const desc = overview.short_description || overview.description || '';
-        const summary = desc.length > 150 ? desc.slice(0, 150) + '...' : desc;
-        const mc = money(financials.market_cap);
-        const news = ((c.news && c.news.articles) || []).filter(a => !isErrorArticle(a));
-        const newsCount = news.length;
-        const filings = (c.filings || []).length;
-
-        return `
-            <div class="card clickable" data-query="${esc(c.query || '')}" data-idx="${idx}">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">${esc(name)}${ticker ? `<span class="ticker">${esc(ticker)}</span>` : ''}</div>
-                        <div class="industry">${esc(industry)}</div>
-                    </div>
-                </div>
-                <p class="card-summary">${esc(summary)}</p>
-                <div class="card-metrics">
-                    <div>Market Cap<span>${mc}</span></div>
-                    <div>News<span>${newsCount}</span></div>
-                    <div>Filings<span>${filings}</span></div>
-                </div>
-            </div>`;
-    }).join('');
-
-    grid.querySelectorAll('.card.clickable').forEach(card => {
-        card.addEventListener('click', () => {
-            const q2 = card.dataset.query;
-            const match = state.reports.find(r => r.query === q2) || filtered[parseInt(card.dataset.idx, 10)];
-            if (match) openDetail(match);
-        });
-    });
+    return out;
 }
 
 function openDetail(data) {
     const resolved = data.resolved || {};
     const overview = data.overview || {};
     const financials = data.financials || {};
-    const news = ((data.news && data.news.articles) || []).filter(a => !isErrorArticle(a));
-
+    const cur = currencyCode(data);
+    const facts = factsFromText(overview.description || overview.short_description || '');
     $('detailName').textContent = resolved.name || data.query || 'Unknown';
     $('detailTicker').textContent = resolved.ticker || '';
     $('detailSummary').textContent = overview.description || overview.short_description || 'No summary available.';
-    $('detailIndustry').textContent = overview.industry || overview.sector || 'N/A';
-    $('detailMarketCap').textContent = financials.market_cap ? money(financials.market_cap) : 'N/A';
+    $('detailIndustry').textContent = overview.industry || overview.sector || overview.short_description || 'N/A';
+    $('detailMarketCap').textContent = financials.market_cap ? money(financials.market_cap, cur) : 'N/A';
+    $('detailHigh').textContent = financials.week_52_high ? price(financials.week_52_high, cur) : 'N/A';
+    $('detailLow').textContent = financials.week_52_low ? price(financials.week_52_low, cur) : 'N/A';
     $('detailEmployees').textContent = overview.employees || 'N/A';
-    $('detailHQ').textContent = overview.headquarters || overview.country || 'N/A';
+    const hq = overview.headquarters || overview.city || facts.hq;
+    const country = overview.country || facts.country;
+    $('detailHQ').textContent = [hq, country].filter(Boolean).join(', ') || 'N/A';
 
     const webEl = $('detailWebsite');
     if (overview.website) {
         webEl.innerHTML = `<a class="link" href="${esc(overview.website)}" target="_blank">Visit</a>`;
+    } else if (overview.wikipedia_url) {
+        webEl.innerHTML = `<a class="link" href="${esc(overview.wikipedia_url)}" target="_blank">Wikipedia</a>`;
     } else {
         webEl.textContent = 'N/A';
     }
 
-    let newsHtml = '';
-    if (news.length) {
-        news.slice(0, 5).forEach(a => {
-            const title = a.url
-                ? `<a href="${esc(a.url)}" target="_blank">${esc(a.title || 'Untitled')}</a>`
-                : esc(a.title || 'Untitled');
-            newsHtml += `<div class="news-item"><h4>${title}</h4><div class="meta">${esc(a.source_name || '')} · ${esc(a.published_at || '')}</div></div>`;
-        });
-    } else {
-        newsHtml = '<p class="muted">No recent news.</p>';
-    }
-    $('detailNews').innerHTML = newsHtml;
-
     const bars = [];
     if (hasFinancialData(financials)) {
-        if (financials.pe_ratio) bars.push(['P/E Ratio', Math.min(100, Math.round(financials.pe_ratio))]);
-        if (financials.beta) bars.push(['Beta', Math.min(100, Math.round(financials.beta * 25))]);
-        if (financials.profit_margin) bars.push(['Profit Margin', Math.min(100, Math.round(financials.profit_margin * 100))]);
+        const pe = Number(financials.pe_ratio);
+        if (Number.isFinite(pe) && pe !== 0) {
+            bars.push({
+                label: 'P/E Ratio',
+                text: fmtNum(pe, 2),
+                width: Math.min(100, Math.max(0, (Math.abs(pe) / 40) * 100)),
+                hint: 'Price ÷ earnings',
+                ticks: ['0 cheap', '20 typical', '40 expensive'],
+            });
+        }
+        const beta = Number(financials.beta);
+        if (Number.isFinite(beta) && beta !== 0) {
+            bars.push({
+                label: 'Beta',
+                text: fmtNum(beta, 2),
+                width: Math.min(100, Math.max(0, (Math.abs(beta) / 2) * 100)),
+                hint: 'Vs market (1.0 = same as market)',
+                ticks: ['0 calmer', '1.0 market', '2.0 jumpy'],
+            });
+        }
+        const pm = Number(financials.profit_margin);
+        if (Number.isFinite(pm) && pm !== 0) {
+            const pct = Math.abs(pm) <= 1 ? Math.abs(pm) * 100 : Math.abs(pm);
+            bars.push({
+                label: 'Profit Margin',
+                text: fmtNum(pct, 1) + '%',
+                width: Math.min(100, pct),
+                hint: 'Profit per $100 of sales',
+                ticks: ['0%', '50%', '100%'],
+            });
+        }
     }
-    $('scoreBars').innerHTML = bars.map(([label, val2]) => `
+    $('scoreBars').innerHTML = bars.map(b => `
         <div class="score-bar-item">
-            <div class="score-bar-label"><span>${label}</span><span>${val2}</span></div>
-            <div class="score-bar-track"><div class="score-bar-fill" style="width:${val2}%"></div></div>
+            <div class="score-bar-label"><span>${esc(b.label)}</span><span>${esc(b.text)}</span></div>
+            <div class="score-bar-hint">${esc(b.hint)}</div>
+            <div class="score-bar-track"><div class="score-bar-fill" style="width:${b.width}%"></div></div>
+            <div class="score-bar-ticks">${b.ticks.map(t => `<span>${esc(t)}</span>`).join('')}</div>
         </div>`).join('');
 
     $('detailModal').classList.add('active');
@@ -400,8 +588,20 @@ function row(label, valueHtml) {
     return `<tr><th>${esc(label)}</th><td>${valueHtml}</td></tr>`;
 }
 
-function renderCompanyDossier(dossier, titlePrefix) {
-    if (!dossier) return '<div class="card"><p class="muted">No company data yet. Investigate a lead, or search here.</p></div>';
+function companyErrorText(msg) {
+    let s = String(msg || '').trim();
+    const cut = s.indexOf('AmbiguousCompanyError:');
+    if (cut !== -1) return s.slice(cut + 'AmbiguousCompanyError:'.length).trim();
+    return s.replace(/^(?:[A-Za-z_][\w.]*Error|RuntimeError):\s*/, '');
+}
+
+function renderCompanyDossier(dossier, titlePrefix, opts) {
+    const options = opts || {};
+    if (!dossier) {
+        const err = companyErrorText(options.emptyError || '');
+        if (err) return `<div class="card"><p class="muted">${esc(err)}</p></div>`;
+        return '<div class="card"><p class="muted">No company data yet. Investigate a lead, or search here.</p></div>';
+    }
     const resolved = dossier.resolved || {};
     const overview = dossier.overview || {};
     const financials = dossier.financials || {};
@@ -410,9 +610,14 @@ function renderCompanyDossier(dossier, titlePrefix) {
     const filings = dossier.filings || [];
     const name = resolved.name || dossier.query || 'Company';
     const ticker = resolved.ticker ? ` <span class="ticker">${esc(resolved.ticker)}</span>` : '';
+    const bmKey = companyKey(dossier);
+    const bm = bmKey ? bookmarkButton(bmKey, isBookmarked(dossier)) : '';
     let html = `
     <div class="card">
-        <h3>${esc(titlePrefix || 'Company')} — ${esc(name)}${ticker}</h3>
+        <div class="card-header">
+            <h3>${esc(titlePrefix || 'Company')} — ${esc(name)}${ticker}</h3>
+            ${bm}
+        </div>
         <table>
             ${row('Description', val(overview.description || overview.short_description))}
             ${row('Industry', val(overview.industry))}
@@ -424,25 +629,53 @@ function renderCompanyDossier(dossier, titlePrefix) {
             ${resolved.exchanges && resolved.exchanges.length ? row('Exchange', esc(resolved.exchanges.join(', '))) : ''}
         </table>
     </div>`;
+    if (options.leadId) {
+        html += `<div class="card">
+            <div class="card-actions" style="margin-top:0">
+                <button type="button" class="btn btn-secondary lookup-news-btn" data-id="${esc(options.leadId)}" ${options.newsLoading ? 'disabled' : ''}>
+                    ${options.newsLoading ? 'Looking up news...' : 'Look up news'}
+                </button>
+            </div>
+        </div>`;
+        if (options.newsLoading) {
+            html += `<div class="loading-inline show" style="margin-bottom:1rem"><div class="spinner-sm"></div><span>Fetching news articles...</span></div>`;
+        } else if (options.newsReady) {
+            if (news.length) {
+                html += `<div class="card"><h3>Recent News (${news.length})</h3>`;
+                news.slice(0, 10).forEach(a => {
+                    const title = a.url
+                        ? `<a href="${esc(a.url)}" target="_blank">${esc(a.title || 'Untitled')}</a>`
+                        : esc(a.title || 'Untitled');
+                    html += `<div class="news-item"><h4>${title}</h4><div class="meta">${esc(a.source_name || '')} · ${esc(a.published_at || '')}</div>`;
+                    if (a.summary) html += `<p>${esc(String(a.summary).slice(0, 200))}</p>`;
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            } else {
+                html += `<div class="card"><h3>Recent News</h3><p class="muted">No recent news found.</p></div>`;
+            }
+        }
+    }
     if (hasFinancialData(financials)) {
+        const cur = currencyCode(dossier);
         html += `
         <div class="card">
             <h3>Financials</h3>
             <table>
-                ${financials.market_cap ? row('Market Cap', money(financials.market_cap)) : ''}
-                ${financials.revenue ? row('Revenue', money(financials.revenue)) : ''}
-                ${row('EPS', val(financials.eps))}
+                ${financials.market_cap ? row('Market Cap', money(financials.market_cap, cur)) : ''}
+                ${financials.revenue ? row('Revenue', money(financials.revenue, cur)) : ''}
+                ${row('EPS', financials.eps != null && financials.eps !== '' ? price(financials.eps, cur) : '')}
                 ${row('P/E Ratio', val(financials.pe_ratio))}
                 ${row('Beta', val(financials.beta))}
-                ${row('52W High', val(financials.week_52_high))}
-                ${row('52W Low', val(financials.week_52_low))}
+                ${financials.week_52_high ? row('52W High', `<span class="fin-high">↑ ${price(financials.week_52_high, cur)}</span>`) : ''}
+                ${financials.week_52_low ? row('52W Low', `<span class="fin-low">↓ ${price(financials.week_52_low, cur)}</span>`) : ''}
             </table>
         </div>`;
-    } else if (sources.finnhub || sources.alpha_vantage) {
-        const reason = (sources.finnhub && sources.finnhub.error) || (sources.alpha_vantage && sources.alpha_vantage.error) || 'unavailable';
+    } else if (sources.yahoo || sources.finnhub || sources.alpha_vantage) {
+        const reason = (sources.yahoo && sources.yahoo.error) || (sources.finnhub && sources.finnhub.error) || (sources.alpha_vantage && sources.alpha_vantage.error) || 'unavailable';
         html += `<div class="card"><h3>Financials</h3><p class="muted">Not available (${esc(reason)}). Try the parent company or stock ticker.</p></div>`;
     }
-    if (news.length) {
+    if (!options.leadId && news.length) {
         html += `<div class="card"><h3>Recent News (${news.length})</h3>`;
         news.slice(0, 10).forEach(a => {
             const title = a.url
@@ -455,15 +688,25 @@ function renderCompanyDossier(dossier, titlePrefix) {
         html += `</div>`;
     }
     if (filings.length) {
-        html += `<div class="card"><h3>SEC Filings (${filings.length})</h3><table>`;
-        filings.slice(0, 10).forEach(f => {
+        const india = (filings[0].via || []).includes('nse') || /india_listing|\.NS|\.BO/i.test((resolved.ticker || '') + (sources.sec_edgar && sources.sec_edgar.error || ''));
+        const heading = india ? `Filings (${filings.length})` : `SEC Filings (${filings.length})`;
+        html += `<div class="card"><h3>${heading}</h3><table class="filings-table">`;
+        filings.slice(0, 20).forEach(f => {
+            const label = f.title || f.form || '';
+            const when = String(f.filed_at || '').trim();
+            const dateHtml = when
+                ? when.split(/\s+/).map(p => esc(p)).join('<br>')
+                : '-';
             const link = f.url ? `<a class="link" href="${esc(f.url)}" target="_blank">View</a>` : '-';
-            html += `<tr><td>${esc(f.form || '')}</td><td>${esc(f.filed_at || '')}</td><td>${link}</td></tr>`;
+            html += `<tr><td>${esc(f.form || '')}</td><td>${dateHtml}</td><td>${esc(label)}</td><td>${link}</td></tr>`;
         });
         html += `</table></div>`;
+    } else if (sources.nse && sources.nse.error && sources.nse.error !== 'us_listing' && sources.nse.error !== 'not_india_listing') {
+        html += `<div class="card"><h3>Filings</h3><p class="muted">NSE announcements not available (${esc(sources.nse.error)}).</p></div>`;
     } else if (sources.sec_edgar) {
         const reason = (sources.sec_edgar && sources.sec_edgar.error) || 'unavailable';
-        html += `<div class="card"><h3>SEC Filings</h3><p class="muted">Not available (${esc(reason)}). Filings require a resolved stock ticker/CIK.</p></div>`;
+        const india = reason === 'india_listing';
+        html += `<div class="card"><h3>${india ? 'Filings' : 'SEC Filings'}</h3><p class="muted">${india ? 'No NSE announcements found for this listing.' : `Not available (${esc(reason)}). US filings need a resolved ticker/CIK.`}</p></div>`;
     }
     return html;
 }
@@ -511,7 +754,7 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
         html += `</table></div>`;
     }
     if (!profiles || !profiles.length) {
-        if (!html) html = '<div class="card"><p class="muted">No LinkedIn profiles yet. Investigate a lead, or scrape a URL here.</p></div>';
+        if (!html) html = '<div class="card"><p class="muted">No linkedin profile found</p></div>';
         return html;
     }
     profiles.forEach((p, i) => {
@@ -556,7 +799,12 @@ function renderLeadList() {
             : '';
         const detailsHtml = (hasResult && lead.viewOpen) ? `
             <div class="lead-details" data-lead-details="${esc(lead.id)}" style="margin-top:1rem">
-                ${renderCompanyDossier(lead.result.company, 'Lead Company')}
+                ${renderCompanyDossier(lead.result.company, 'Lead Company', {
+                    leadId: lead.id,
+                    newsLoading: !!lead.newsLoading,
+                    newsReady: !!lead.newsLookedUp,
+                    emptyError: lead.result.company_error || '',
+                })}
                 ${renderProfiles(
                     lead.result.profiles || [],
                     lead.result.candidate_urls || [],
@@ -569,8 +817,11 @@ function renderLeadList() {
         const stopBtn = lead.investigating
             ? `<button type="button" class="btn btn-ghost stop-btn" data-id="${esc(lead.id)}">Stop</button>`
             : '';
+        const ckey = leadCompanyKey(lead);
+        const bm = ckey ? `<span class="lead-bookmark">${bookmarkButton(ckey, (state.bookmarks || []).includes(ckey))}</span>` : '';
         return `
         <div class="card" data-lead-id="${esc(lead.id)}">
+            ${bm}
             <table>
                 ${row('Name', val(p.name))}
                 ${row('Email', val(p.email))}
@@ -599,8 +850,10 @@ function renderLeadList() {
             state.leads = state.leads.filter(l => l.id !== btn.dataset.id);
             saveState();
             renderLeadList();
+            renderDashboard();
         });
     });
+    bindBookmarkButtons(list);
 
     list.querySelectorAll('.view-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -631,11 +884,16 @@ function renderLeadList() {
     list.querySelectorAll('.scrape-candidates-btn').forEach(btn => {
         btn.addEventListener('click', () => scrapeLeadCandidates(btn.dataset.id));
     });
+
+    list.querySelectorAll('.lookup-news-btn').forEach(btn => {
+        btn.addEventListener('click', () => lookupLeadNews(btn.dataset.id));
+    });
 }
 
 function renderCompanyPanel() {
     if (state.company.query) $('company-query').value = state.company.query;
     $('company-results').innerHTML = renderCompanyDossier(state.company.dossier);
+    bindBookmarkButtons($('company-results'));
 }
 
 function renderLinkedinPanel() {
@@ -667,6 +925,46 @@ function applyInvestigateToShared(result) {
         state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
     } else if (state.linkedin.candidateUrls.length) {
         state.linkedin.url = state.linkedin.candidateUrls[0];
+    }
+}
+
+function newsQueryForLead(lead) {
+    const company = (lead.result && lead.result.company) || {};
+    const resolved = company.resolved || {};
+    const parsed = lead.parsed || {};
+    return resolved.name || company.query || parsed.company || '';
+}
+
+async function lookupLeadNews(id) {
+    const lead = state.leads.find(l => l.id === id);
+    if (!lead || !lead.result || lead.newsLoading) return;
+    const query = newsQueryForLead(lead);
+    if (!query) {
+        lead.error = 'No company name available for news lookup.';
+        renderLeadList();
+        return;
+    }
+    lead.newsLoading = true;
+    lead.newsLookedUp = false;
+    lead.viewOpen = true;
+    lead.error = null;
+    renderLeadList();
+    try {
+        const data = await postJson('/api/company/news', { query });
+        if (!lead.result.company) lead.result.company = {};
+        lead.result.company.news = {
+            digest_summary: null,
+            lookback_days: data.lookback_days || 3,
+            articles: data.articles || [],
+        };
+        lead.newsLookedUp = true;
+    } catch (err) {
+        lead.error = err.message || String(err);
+        lead.newsLookedUp = false;
+    } finally {
+        lead.newsLoading = false;
+        renderLeadList();
+        queueSaveState();
     }
 }
 
@@ -713,6 +1011,8 @@ async function investigateLead(id) {
     lead.investigating = true;
     lead.error = null;
     lead.viewOpen = false;
+    lead.newsLookedUp = false;
+    lead.newsLoading = false;
     lead.progressPct = 0;
     lead.progressStep = 'Starting...';
     renderLeadList();
@@ -767,6 +1067,10 @@ async function investigateLead(id) {
         }, controller.signal);
         lead.result = data.result;
         lead.parsed = (data.result && data.result.parsed) || lead.parsed;
+        if (lead.result && lead.result.company && lead.result.company.news) {
+            lead.result.company.news.articles = [];
+        }
+        lead.newsLookedUp = false;
         const liErr = (data.result && (data.result.search_error || data.result.scrape_error)) || '';
         if (liErr) lead.error = String(liErr);
         setLeadProgress(100, 'Complete', false);
@@ -792,6 +1096,7 @@ async function investigateLead(id) {
             activeLeadInvestigation.controller = null;
         }
         renderLeadList();
+        renderDashboard();
         queueSaveState();
     }
 }
@@ -887,6 +1192,8 @@ $('company-form').addEventListener('submit', (e) => {
     const query = $('company-query').value.trim();
     if (!query) return;
     state.company.query = query;
+    state.company.dossier = null;
+    renderCompanyPanel();
     showError($('company-error'), '');
     const btn = $('company-btn');
     btn.disabled = true;
@@ -907,7 +1214,9 @@ $('company-form').addEventListener('submit', (e) => {
                 done = true;
                 evtSource.close();
                 if (msg.error) {
-                    showError($('company-error'), msg.error);
+                    state.company.dossier = null;
+                    renderCompanyPanel();
+                    showCompanyError(msg.error);
                     finishCompany();
                 } else {
                     fetchCompanyResult(query);
@@ -927,7 +1236,14 @@ $('company-form').addEventListener('submit', (e) => {
             const data = await res.json();
             if (data.ok && data.reports) {
                 const match = data.reports.find(r => (r.query || '').toLowerCase() === q.toLowerCase());
-                if (match) state.company.dossier = match;
+                const desc = ((match && match.overview) || {}).description || '';
+                const short = (((match && match.overview) || {}).short_description || '').toLowerCase();
+                if (match && (/may refer to/i.test(desc) || short.includes('same term') || short.includes('disambiguation'))) {
+                    state.company.dossier = null;
+                    showCompanyError('The name is too vague. Try a full company name or stock ticker.');
+                } else if (match) {
+                    state.company.dossier = match;
+                }
             }
             saveState();
             renderCompanyPanel();
@@ -1000,5 +1316,5 @@ loadSampleLeads().then(() => {
     const initial = valid.includes(hash) ? hash : (state.tab || 'dashboard');
     switchTab(initial);
 });
-loadReports();
+loadReports().then(() => refreshBookmarkedCompanies());
 loadStats();

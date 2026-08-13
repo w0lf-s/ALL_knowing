@@ -290,7 +290,7 @@
                 html += `</table></div>`;
             }
             if (!profiles || !profiles.length) {
-                if (!html) html = '<div class="card"><p class="muted">No LinkedIn profiles yet. Investigate a lead, or scrape a URL here.</p></div>';
+                if (!html) html = '<div class="card"><p class="muted">No linkedin profile found</p></div>';
                 return html;
             }
             profiles.forEach((p, i) => {

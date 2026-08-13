@@ -282,7 +282,14 @@ def clip_words(text: str, max_words: int = 300) -> str:
 def needs_content(articles: list[dict[str, Any]]) -> bool:
     if not articles:
         return False
-    return any(not (a.get("content") or "").strip() for a in articles[:8])
+    for a in articles[:8]:
+        if (a.get("content") or "").strip():
+            continue
+        summary = str(a.get("summary") or "").strip()
+        if summary and not is_error_text(summary) and len(summary.split()) >= 20:
+            continue
+        return True
+    return False
 
 
 def _html_to_text(html_src: str) -> str | None:
@@ -339,14 +346,14 @@ async def enrich_articles(
     enabled: bool = True,
 ) -> list[dict[str, Any]]:
     n = top_n if top_n is not None else int(os.getenv("NEWS_ENRICH_TOP_N", "8"))
-    selected = [dict(a) for a in articles[: max(n, 24)]]
+    selected = [dict(a) for a in articles[:n]]
     if not enabled or not selected:
         return [sanitize_article_fields(a) for a in selected[:n]]
 
     browser = None
     context = None
     sem = asyncio.Semaphore(2)
-    timeout_ms = 45000
+    timeout_ms = 20000
 
     try:
         from playwright.async_api import async_playwright
@@ -362,6 +369,10 @@ async def enrich_articles(
             clipped = clip_words(str(item["content"]), 300)
             item["content"] = clipped or None
             return sanitize_article_fields(item)
+        summary = str(item.get("summary") or "").strip()
+        if summary and not is_error_text(summary) and len(summary.split()) >= 20:
+            item["content"] = clip_words(summary, 300) or None
+            return sanitize_article_fields(item)
 
         body = None
         title = None
@@ -371,14 +382,9 @@ async def enrich_articles(
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                     try:
-                        await page.wait_for_load_state("networkidle", timeout=10000)
-                    except Exception:
-                        pass
-                    await page.wait_for_timeout(800)
-                    try:
                         await page.wait_for_selector(
                             "article p, [itemprop='articleBody'] p, main p, .article-body p, .post-content p",
-                            timeout=6000,
+                            timeout=3000,
                         )
                     except Exception:
                         pass

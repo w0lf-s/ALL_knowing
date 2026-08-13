@@ -21,6 +21,17 @@ def sanitize_error(exc: BaseException) -> str:
     return text[:180] if text else "request_failed"
 
 
+def _retry_wait(resp, attempt: int) -> float:
+    raw = resp.headers.get("Retry-After") if resp is not None else None
+    wait = 2 ** attempt
+    if raw:
+        try:
+            wait = float(raw)
+        except Exception:
+            wait = 2 ** attempt
+    return min(max(wait, 0.1), 3.0)
+
+
 class HttpClient:
     def __init__(self, timeout: float = 15.0) -> None:
         self._client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
@@ -35,14 +46,17 @@ class HttpClient:
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         retries: int = 3,
+        timeout: float | None = None,
     ) -> Any:
         last_err: Exception | None = None
+        req = {"params": params, "headers": headers}
+        if timeout is not None:
+            req["timeout"] = timeout
         for attempt in range(retries):
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                resp = await self._client.get(url, **req)
                 if resp.status_code in (429, 500, 502, 503, 504):
-                    wait = float(resp.headers.get("Retry-After") or (2 ** attempt))
-                    await asyncio.sleep(wait)
+                    await asyncio.sleep(_retry_wait(resp, attempt))
                     last_err = httpx.HTTPStatusError(
                         f"HTTP {resp.status_code}",
                         request=resp.request,
@@ -53,7 +67,7 @@ class HttpClient:
                 return resp.json()
             except Exception as exc:
                 last_err = exc
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(min(2 ** attempt, 3.0))
         raise last_err or RuntimeError("request failed")
 
     async def get_text(
@@ -63,14 +77,17 @@ class HttpClient:
         params: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         retries: int = 3,
+        timeout: float | None = None,
     ) -> str:
         last_err: Exception | None = None
+        req = {"params": params, "headers": headers}
+        if timeout is not None:
+            req["timeout"] = timeout
         for attempt in range(retries):
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                resp = await self._client.get(url, **req)
                 if resp.status_code in (429, 500, 502, 503, 504):
-                    wait = float(resp.headers.get("Retry-After") or (2 ** attempt))
-                    await asyncio.sleep(wait)
+                    await asyncio.sleep(_retry_wait(resp, attempt))
                     last_err = httpx.HTTPStatusError(
                         f"HTTP {resp.status_code}",
                         request=resp.request,
@@ -81,7 +98,7 @@ class HttpClient:
                 return resp.text
             except Exception as exc:
                 last_err = exc
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(min(2 ** attempt, 3.0))
         raise last_err or RuntimeError("request failed")
 
 

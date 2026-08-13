@@ -29,6 +29,8 @@ async def fetch_github(http: HttpClient, ctx: CompanyContext) -> SourceResult:
             "https://api.github.com/search/users",
             params={"q": search_q, "per_page": 5},
             headers=headers,
+            retries=2,
+            timeout=8.0,
         )
         items = search.get("items") or []
         org = None
@@ -40,11 +42,15 @@ async def fetch_github(http: HttpClient, ctx: CompanyContext) -> SourceResult:
                 org = await http.get_json(
                     f"https://api.github.com/users/{login}",
                     headers=headers,
+                    retries=2,
+                    timeout=8.0,
                 )
                 repos = await http.get_json(
                     f"https://api.github.com/users/{login}/repos",
                     params={"sort": "stars", "per_page": 10, "type": "public"},
                     headers=headers,
+                    retries=2,
+                    timeout=8.0,
                 )
                 data = {"org": org, "repos": repos, "search": search}
                 set_cached("github", cache_key, data)

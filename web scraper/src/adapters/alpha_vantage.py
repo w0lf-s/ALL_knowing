@@ -28,6 +28,60 @@ def _num(v: Any) -> float | None:
         return None
 
 
+async def search_symbol(http: HttpClient, query: str) -> SourceResult:
+    key = os.getenv("ALPHA_VANTAGE_API_KEY", "").strip()
+    if not key:
+        return SourceResult("alpha_vantage", False, error="missing_api_key")
+    cached = get_cached("av_search", query.lower(), 86400)
+    if cached is not None:
+        return SourceResult("alpha_vantage", True, data={"search": cached, "cached": True})
+    try:
+        data = await http.get_json(
+            "https://www.alphavantage.co/query",
+            params={"function": "SYMBOL_SEARCH", "keywords": query, "apikey": key},
+            retries=2,
+            timeout=10.0,
+        )
+        if isinstance(data, dict) and (data.get("Note") or data.get("Information")):
+            return SourceResult("alpha_vantage", False, error="rate_limited")
+        matches = (data or {}).get("bestMatches") or []
+        set_cached("av_search", query.lower(), matches)
+        return SourceResult("alpha_vantage", True, data={"search": matches})
+    except Exception as exc:
+        return SourceResult("alpha_vantage", False, error=sanitize_error(exc))
+
+
+def pick_av_symbol(matches: list[dict], query: str) -> tuple[str | None, str | None]:
+    if not matches:
+        return None, None
+    q_lower = query.strip().lower()
+    best: tuple[int, str, str | None] | None = None
+    for item in matches:
+        sym = (item.get("1. symbol") or item.get("symbol") or "").upper().strip()
+        name = item.get("2. name") or item.get("name")
+        region = (item.get("4. region") or item.get("region") or "").lower()
+        if not sym:
+            continue
+        score = 0
+        if name and q_lower in str(name).lower():
+            score += 40
+        if "united states" in region:
+            score += 20
+        if "india" in region:
+            score += 25
+        if sym.endswith(".BSE") or sym.endswith(".NSE") or sym.endswith(".NS") or sym.endswith(".BO"):
+            score += 15
+        if best is None or score > best[0]:
+            best = (score, sym, name)
+    if best:
+        return best[1], best[2]
+    first = matches[0]
+    return (
+        (first.get("1. symbol") or "").upper() or None,
+        first.get("2. name"),
+    )
+
+
 async def fetch_overview(
     http: HttpClient,
     limits: RateLimits,
