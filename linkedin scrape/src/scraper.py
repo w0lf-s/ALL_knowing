@@ -97,7 +97,7 @@ def write_summary(total: int, success: int, failed: int) -> None:
     )
 
 
-def run(settings: Settings | None = None) -> list[dict[str, Any]]:
+def run(settings: Settings | None = None, on_progress=None) -> list[dict[str, Any]]:
     settings = settings or get_settings()
     ensure_dirs()
     urls = load_urls()
@@ -113,10 +113,29 @@ def run(settings: Settings | None = None) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     try:
         browser, context = create_authenticated_context(playwright, settings)
+        if settings.headless:
+            settings.delay_min_seconds = min(float(settings.delay_min_seconds), 0.6)
+            settings.delay_max_seconds = min(float(settings.delay_max_seconds), 1.2)
         page = context.new_page()
+        total = len(urls)
         for index, url in enumerate(urls):
+            if on_progress:
+                on_progress({
+                    "pct": int((index / max(total, 1)) * 100),
+                    "step": f"Scraping profile {index + 1} of {total}",
+                    "index": index + 1,
+                    "total": total,
+                })
             row = extract_profile(page, url)
             results.append(row)
+            if on_progress:
+                on_progress({
+                    "pct": int(((index + 1) / max(total, 1)) * 100),
+                    "step": f"Finished profile {index + 1} of {total}",
+                    "index": index + 1,
+                    "total": total,
+                    "profile": row,
+                })
             if row.get("error") == "auth_required":
                 write_results(results)
                 success = sum(1 for r in results if is_successful_row(r))

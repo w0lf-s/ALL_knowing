@@ -885,8 +885,19 @@ table.candidates-table td:first-child {
 }
 
 table.candidates-table td:nth-child(2) {
-    width: 14rem;
+    width: 12rem;
     white-space: nowrap;
+}
+
+table.candidates-table td:last-child {
+    width: 5.5rem;
+    white-space: nowrap;
+    text-align: right;
+}
+
+table.candidates-table .btn {
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
 }
 
 table.candidates-table th,

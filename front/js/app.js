@@ -2,7 +2,7 @@ const state = {
     tab: 'dashboard',
     leads: [],
     company: { query: '', dossier: null },
-    linkedin: { url: '', company: '', profiles: [], candidateUrls: [], candidates: [] },
+    linkedin: { url: '', company: '', profiles: [], candidateUrls: [], candidates: [], searching: false, searched: false },
     reports: [],
     bookmarks: [],
 };
@@ -134,7 +134,10 @@ function loadState() {
             }));
         }
         if (parsed.company) state.company = parsed.company;
-        if (parsed.linkedin) state.linkedin = parsed.linkedin;
+        if (parsed.linkedin) {
+            state.linkedin = parsed.linkedin;
+            state.linkedin.searching = false;
+        }
         if (parsed.tab) state.tab = parsed.tab;
         if (parsed.reports) state.reports = parsed.reports;
         if (Array.isArray(parsed.bookmarks)) state.bookmarks = parsed.bookmarks;
@@ -750,12 +753,16 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
         cands.forEach((item, i) => {
             const url = item.url || item;
             const name = candidateDisplayName(url, profiles, cands);
-            html += `<tr><th>${i + 1}</th><td>${esc(name)}</td><td><a class="link" href="${esc(url)}" target="_blank">${esc(url)}</a></td></tr>`;
+            html += `<tr><th>${i + 1}</th><td>${esc(name)}</td><td><a class="link" href="${esc(url)}" target="_blank">${esc(url)}</a></td>${options.allowScrape ? `<td><button type="button" class="btn btn-secondary scrape-one-btn" data-url="${esc(url)}" ${options.scraping ? 'disabled' : ''}>Scrape</button></td>` : ''}</tr>`;
         });
         html += `</table></div>`;
     }
     if (!profiles || !profiles.length) {
-        if (!html) html = '<div class="card"><p class="muted">No linkedin profile found</p></div>';
+        if (!html) {
+            if (options.searching) return '';
+            if (options.searched) html = '<div class="card"><p class="muted">No linkedin profile found</p></div>';
+            else html = '<div class="card"><p class="muted">Enter a name or LinkedIn URL</p></div>';
+        }
         return html;
     }
     profiles.forEach((p, i) => {
@@ -806,6 +813,8 @@ function openLinkedInFromLead(id) {
     state.linkedin.profiles = [];
     state.linkedin.candidates = [];
     state.linkedin.candidateUrls = [];
+    state.linkedin.searching = true;
+    state.linkedin.searched = false;
     saveState();
     switchTab('linkedin');
     $('linkedin-form').requestSubmit();
@@ -931,12 +940,15 @@ function renderLinkedinPanel() {
         state.linkedin.profiles,
         state.linkedin.candidateUrls,
         state.linkedin.candidates,
-        { allowScrape: true, scraping: !!state.linkedin.scraping, scrapePct: state.linkedin.scrapePct || 0, scrapeStep: state.linkedin.scrapeStep || '' }
+        { allowScrape: true, scraping: !!state.linkedin.scraping, scrapePct: state.linkedin.scrapePct || 0, scrapeStep: state.linkedin.scrapeStep || '', searching: !!state.linkedin.searching, searched: !!state.linkedin.searched }
     );
     const results = $('linkedin-results');
     if (results) {
         results.querySelectorAll('.scrape-candidates-btn').forEach(btn => {
             btn.addEventListener('click', () => scrapeLinkedInCandidates());
+        });
+        results.querySelectorAll('.scrape-one-btn').forEach(btn => {
+            btn.addEventListener('click', () => scrapeLinkedInCandidates(btn.dataset.url));
         });
     }
 }
@@ -995,58 +1007,90 @@ async function lookupLeadNews(id) {
     }
 }
 
-async function scrapeLinkedInCandidates() {
+async function scrapeLinkedInCandidates(onlyUrl) {
     if (state.linkedin.scraping) return;
-    const urls = (state.linkedin.candidateUrls && state.linkedin.candidateUrls.length)
+    const all = (state.linkedin.candidateUrls && state.linkedin.candidateUrls.length)
         ? state.linkedin.candidateUrls
         : (state.linkedin.candidates || []).map(c => c.url || c).filter(Boolean);
+    const urls = (onlyUrl ? [onlyUrl] : all).filter(Boolean).slice(0, 5);
     if (!urls.length) return;
+    const total = urls.length;
     state.linkedin.scraping = true;
-    state.linkedin.scrapePct = 8;
-    state.linkedin.scrapeStep = 'Launching browser...';
+    state.linkedin.scrapePct = 4;
+    state.linkedin.scrapeStep = total > 1 ? `Scraping profile 1 of ${total}` : 'Scraping profile...';
+    if (!onlyUrl) state.linkedin.profiles = [];
     showError($('linkedin-error'), '');
     renderLinkedinPanel();
-    const steps = [
-        [18, 'Launching browser...'],
-        [36, 'Opening profiles...'],
-        [54, 'Waiting for page load...'],
-        [72, 'Extracting profile data...'],
-        [88, 'Processing...'],
-    ];
-    let stepIdx = 0;
-    const interval = setInterval(() => {
-        if (stepIdx >= steps.length) return;
-        const pct = steps[stepIdx][0];
-        const text = steps[stepIdx][1];
+
+    const streamUrl = `/api/linkedin/stream?urls=${encodeURIComponent(JSON.stringify(urls))}`;
+    const evtSource = new EventSource(streamUrl);
+    let finished = false;
+
+    function applyProgress(pct, text) {
         state.linkedin.scrapePct = pct;
         state.linkedin.scrapeStep = text;
         const fill = document.querySelector('.linkedin-scrape-fill');
         const stepEl = document.querySelector('.linkedin-scrape-step');
         if (fill) fill.style.width = pct + '%';
         if (stepEl) stepEl.textContent = text;
-        stepIdx++;
-    }, 4000);
-    try {
-        const data = await postJson('/api/linkedin', { urls: urls.slice(0, 5) });
-        state.linkedin.profiles = data.profiles || (data.profile ? [data.profile] : []);
-        if (state.linkedin.profiles.length) {
-            const first = state.linkedin.profiles[0];
-            state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
+    }
+
+    function mergeProfile(row) {
+        if (!row) return;
+        const key = String(row.linkedin_profile_url || row.url || '').split('?')[0].replace(/\/$/, '').toLowerCase();
+        if (!key) {
+            state.linkedin.profiles = (state.linkedin.profiles || []).concat([row]);
+            return;
         }
-        state.linkedin.scrapePct = 100;
-        state.linkedin.scrapeStep = 'Complete';
-        const fill = document.querySelector('.linkedin-scrape-fill');
-        if (fill) fill.style.width = '100%';
-    } catch (err) {
-        showError($('linkedin-error'), err.message || String(err));
-    } finally {
-        clearInterval(interval);
+        const idx = (state.linkedin.profiles || []).findIndex(p => {
+            const k = String(p.linkedin_profile_url || p.url || '').split('?')[0].replace(/\/$/, '').toLowerCase();
+            return k === key;
+        });
+        if (idx >= 0) state.linkedin.profiles[idx] = row;
+        else state.linkedin.profiles = (state.linkedin.profiles || []).concat([row]);
+    }
+
+    function finish(err) {
+        if (finished) return;
+        finished = true;
+        evtSource.close();
+        if (err) showError($('linkedin-error'), err);
         state.linkedin.scraping = false;
         state.linkedin.scrapePct = 0;
         state.linkedin.scrapeStep = '';
         saveState();
         renderLinkedinPanel();
     }
+
+    evtSource.onmessage = function(ev) {
+        let msg = {};
+        try { msg = JSON.parse(ev.data); } catch (_) { return; }
+        if (msg.error && msg.done) {
+            finish(msg.error);
+            return;
+        }
+        if (msg.step) {
+            applyProgress(Number(msg.pct) || state.linkedin.scrapePct || 0, msg.step);
+        }
+        if (msg.profile) {
+            mergeProfile(msg.profile);
+            renderLinkedinPanel();
+        }
+        if (msg.done) {
+            if (Array.isArray(msg.profiles) && msg.profiles.length) {
+                msg.profiles.forEach(mergeProfile);
+            }
+            if (state.linkedin.profiles.length) {
+                const first = state.linkedin.profiles[0];
+                state.linkedin.url = first.linkedin_profile_url || first.url || state.linkedin.url || '';
+            }
+            applyProgress(100, 'Complete');
+            finish();
+        }
+    };
+    evtSource.onerror = function() {
+        if (!finished) finish('Connection lost');
+    };
 }
 
 async function investigateLead(id) {
@@ -1322,7 +1366,13 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     const company = ($('linkedin-company') && $('linkedin-company').value.trim()) || '';
     state.linkedin.url = raw;
     state.linkedin.company = company;
+    state.linkedin.searching = true;
+    state.linkedin.searched = false;
+    state.linkedin.profiles = [];
+    state.linkedin.candidates = [];
+    state.linkedin.candidateUrls = [];
     showError($('linkedin-error'), '');
+    renderLinkedinPanel();
     const btn = $('linkedin-btn');
     btn.disabled = true;
     const asUrl = isLinkedInProfileUrl(raw);
@@ -1365,14 +1415,20 @@ $('linkedin-form').addEventListener('submit', async (e) => {
             state.linkedin.candidateUrls = data.candidate_urls || [];
             state.linkedin.profiles = [];
         }
+        state.linkedin.searched = true;
+        state.linkedin.searching = false;
         saveState();
         $('linkedin-progress-fill').style.width = '100%';
         $('linkedin-step').textContent = 'Complete';
         renderLinkedinPanel();
     } catch (err) {
+        state.linkedin.searched = true;
+        state.linkedin.searching = false;
         showError($('linkedin-error'), err.message || String(err));
+        renderLinkedinPanel();
     } finally {
         clearInterval(interval);
+        state.linkedin.searching = false;
         btn.disabled = false;
         setLoading('linkedin-loading', false);
         $('linkedin-progress').style.display = 'none';

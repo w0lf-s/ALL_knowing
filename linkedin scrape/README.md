@@ -6,38 +6,33 @@ LinkedIn’s Terms of Service disallow automated scraping. Use only on accounts 
 
 ## Setup
 
-1. Create a virtual environment and install dependencies:
+Use the shared venv and the single env file under `not to share\`:
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-playwright install chromium
+```powershell
+.\not to share\.venv\Scripts\Activate.ps1
+copy "not to share\.env.example" "not to share\.env"
 ```
 
-2. Copy `.env.example` to `.env` and set `LINKEDIN_EMAIL` and `LINKEDIN_PASSWORD`.
-
-3. Put profile URLs in `urls.txt` (one per line). Lines starting with `#` are ignored.
+Set `LINKEDIN_EMAIL` and `LINKEDIN_PASSWORD` in `not to share\.env`. Put profile URLs in `not to share\linkedin\urls.txt` (one per line).
 
 ## Run
 
-```bash
+```powershell
 python main.py
 ```
 
-A Chromium window opens (headed by default). Complete any LinkedIn checkpoint or 2FA in that window if prompted. Session cookies are saved to `storage/linkedin_state.json` for reuse. Results print in the terminal when the run finishes.
+A Chromium window opens (headed by default). Complete any LinkedIn checkpoint or 2FA in that window if prompted. Session cookies are saved to `not to share\linkedin\storage\linkedin_state.json` for reuse.
 
 View saved results without scraping:
 
-```bash
+```powershell
 python main.py --view
 ```
 
 ## Output
 
-- Terminal CLI summary after each run (or via `--view`)
-- `output/results.json` — full records
-- `output/results.csv` — spreadsheet-friendly rows
-- `output/run_summary.json` — total / success / failed counts
+Private outputs live under `not to share\linkedin\output\`:
 
-Contact email and phone appear only when LinkedIn shows them on the Contact info panel for your account.
+- `results.json`
+- `results.csv`
+- `run_summary.json`

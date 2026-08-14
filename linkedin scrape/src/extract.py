@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urlparse
@@ -20,6 +21,10 @@ DECORATION_IDS = (
     "com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-57",
     "com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-35",
 )
+
+
+def _fast() -> bool:
+    return os.getenv("HEADLESS", "").strip().lower() in {"1", "true", "yes"}
 
 
 def _blank_result(url: str) -> dict[str, Any]:
@@ -751,11 +756,11 @@ def _apply_link_items(data: dict[str, Any], items: list[dict[str, str]]) -> None
 def _collect_profile_links(page: Page, data: dict[str, Any]) -> None:
     try:
         page.evaluate("window.scrollTo(0, Math.floor(document.body.scrollHeight * 0.35))")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(250 if _fast() else 800)
         page.evaluate("window.scrollTo(0, Math.floor(document.body.scrollHeight * 0.7))")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(250 if _fast() else 800)
         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(250 if _fast() else 800)
     except Exception:
         pass
     _apply_link_items(data, _collect_links_via_js(page, scope="redirects"))
@@ -805,10 +810,10 @@ def _extract_dom_contact(page: Page, data: dict[str, Any], captured: list[dict[s
             if candidate.count() == 0:
                 continue
             target = candidate.first
-            if not target.is_visible(timeout=1200):
+            if not target.is_visible(timeout=600 if _fast() else 1200):
                 continue
             target.click(timeout=4000)
-            page.wait_for_timeout(1500)
+            page.wait_for_timeout(400 if _fast() else 1500)
             opened = True
             break
         except Exception:
@@ -816,8 +821,8 @@ def _extract_dom_contact(page: Page, data: dict[str, Any], captured: list[dict[s
 
     if not opened:
         try:
-            page.goto(_contact_overlay_url(str(profile_url)), wait_until="domcontentloaded", timeout=45000)
-            page.wait_for_timeout(2000)
+            page.goto(_contact_overlay_url(str(profile_url)), wait_until="domcontentloaded", timeout=20000 if _fast() else 45000)
+            page.wait_for_timeout(600 if _fast() else 2000)
             opened = True
         except Exception:
             opened = False
@@ -828,11 +833,11 @@ def _extract_dom_contact(page: Page, data: dict[str, Any], captured: list[dict[s
     try:
         page.wait_for_selector(
             ".artdeco-modal, section.pv-contact-info, a[href^='mailto:'], section:has-text('Email')",
-            timeout=8000,
+            timeout=4000 if _fast() else 8000,
         )
     except Exception:
         pass
-    page.wait_for_timeout(1000)
+    page.wait_for_timeout(300 if _fast() else 1000)
 
     if len(captured) > before:
         _merge_captured(captured[before:], data)
@@ -865,11 +870,12 @@ def _extract_dom_contact(page: Page, data: dict[str, Any], captured: list[dict[s
 
     _close_contact_overlay(page)
 
-    try:
-        page.goto(str(profile_url).split("?")[0], wait_until="domcontentloaded", timeout=45000)
-        page.wait_for_timeout(1200)
-    except Exception:
-        pass
+    if not _fast():
+        try:
+            page.goto(str(profile_url).split("?")[0], wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(1200)
+        except Exception:
+            pass
     _collect_profile_links(page, data)
 
 
@@ -1075,13 +1081,14 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
     slug = _slug_from_url(url)
 
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(2500)
-        try:
-            page.wait_for_load_state("networkidle", timeout=12000)
-        except Exception:
-            pass
-        page.wait_for_timeout(1500)
+        page.goto(url, wait_until="domcontentloaded", timeout=45000 if _fast() else 60000)
+        page.wait_for_timeout(700 if _fast() else 2500)
+        if not _fast():
+            try:
+                page.wait_for_load_state("networkidle", timeout=12000)
+            except Exception:
+                pass
+            page.wait_for_timeout(1500)
 
         if _page_looks_like_authwall(page):
             data["error"] = "auth_required"
@@ -1103,7 +1110,7 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
         missing_core = not data.get("name") or not data.get("headline")
         if missing_core:
             try:
-                page.wait_for_selector("main h1, h1.text-heading-xlarge, h1.break-words", timeout=8000)
+                page.wait_for_selector("main h1, h1.text-heading-xlarge, h1.break-words", timeout=4000 if _fast() else 8000)
             except Exception:
                 pass
             _extract_dom_profile(page, data)

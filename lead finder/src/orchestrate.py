@@ -77,8 +77,8 @@ def run_linkedin_scrape(urls: list[str], *, headless: bool = True) -> list[dict[
             settings.checkpoint_timeout_seconds = min(
                 settings.checkpoint_timeout_seconds, 20
             )
-            settings.delay_min_seconds = min(settings.delay_min_seconds, 1.0)
-            settings.delay_max_seconds = min(settings.delay_max_seconds, 2.0)
+            settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
+            settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
         return run(settings)
 
 

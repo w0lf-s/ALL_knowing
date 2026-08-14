@@ -4,9 +4,13 @@ import asyncio
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
+
+_ENV = Path(__file__).resolve().parent.parent.parent / "not to share" / ".env"
+load_dotenv(_ENV if _ENV.exists() else None)
 
 from src.adapters import SourceResult
 from src.adapters.alpha_vantage import fetch_overview
@@ -57,9 +61,6 @@ async def run_pipeline(
     skip_news: bool = False,
     lite: bool = False,
 ) -> CompanyDossier:
-    from pathlib import Path as _P
-    _env = _P(__file__).resolve().parent.parent.parent / "not to share" / ".env"
-    load_dotenv(_env if _env.exists() else None)
     ensure_dirs()
     key = company_key(query)
     lookback = int(os.getenv("NEWS_LOOKBACK_DAYS", "3"))
@@ -304,9 +305,6 @@ async def fetch_company_news(
     use_groq: bool = True,
     use_playwright: bool = True,
 ) -> dict[str, Any]:
-    from pathlib import Path as _P
-    _env = _P(__file__).resolve().parent.parent.parent / "not to share" / ".env"
-    load_dotenv(_env if _env.exists() else None)
     ensure_dirs()
     lookback = int(os.getenv("NEWS_LOOKBACK_DAYS", "3"))
     http = HttpClient()

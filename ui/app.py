@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv(SECRETS / ".env")
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, request
 
 app = Flask(__name__)
 
@@ -106,8 +106,12 @@ URLS_PATH.write_text("\\n".join(urls) + "\\n", encoding="utf-8")
 settings = get_settings()
 settings.headless = True
 settings.checkpoint_timeout_seconds = min(settings.checkpoint_timeout_seconds, 20)
-rows = run(settings)
-print(json.dumps(rows or [], default=str))
+settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
+settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
+def _emit(obj):
+    print(json.dumps(obj, default=str), flush=True)
+rows = run(settings, on_progress=_emit)
+print(json.dumps(rows or [], default=str), flush=True)
 """
 
 _LEAD_PARSE = """
@@ -569,6 +573,67 @@ def api_linkedin():
         return _json_error("LinkedIn scraper timed out", 504)
     except Exception as exc:
         return _json_error(str(exc))
+
+
+@app.get("/api/linkedin/stream")
+def api_linkedin_stream():
+    raw = request.args.get("urls") or "[]"
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        parsed = []
+    if isinstance(parsed, list):
+        urls = [str(u).strip() for u in parsed if str(u).strip()]
+    elif isinstance(parsed, str) and parsed.strip():
+        urls = [parsed.strip()]
+    else:
+        urls = []
+    urls = urls[:5]
+    if not urls:
+        return _json_error("Enter a LinkedIn profile URL")
+
+    script = _LI_RUNNER.format(
+        li_root=str(ROOT / "linkedin scrape").replace("\\", "\\\\")
+    )
+    proc = subprocess.Popen(
+        [str(VENV_PYTHON), "-c", script, json.dumps(urls)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(ROOT / "linkedin scrape"),
+        env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
+    )
+
+    def generate():
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                text = line.strip()
+                if not text:
+                    continue
+                try:
+                    msg = json.loads(text)
+                except Exception:
+                    continue
+                if isinstance(msg, list):
+                    yield f"data: {json.dumps({'done': True, 'ok': True, 'profiles': msg}, default=str)}\n\n"
+                elif isinstance(msg, dict):
+                    yield f"data: {json.dumps(msg, default=str)}\n\n"
+            code = proc.wait(timeout=5)
+            if code not in (0, None):
+                err = (proc.stderr.read() if proc.stderr else "") or "LinkedIn scraper failed"
+                yield f"data: {json.dumps({'done': True, 'error': err.strip().splitlines()[-1] if err.strip() else 'LinkedIn scraper failed'})}\n\n"
+        except Exception as exc:
+            _kill_process_tree(proc)
+            yield f"data: {json.dumps({'done': True, 'error': str(exc)})}\n\n"
+        finally:
+            if proc.poll() is None:
+                _kill_process_tree(proc)
+
+    return Response(generate(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @app.post("/api/linkedin/search")

@@ -1,15 +1,14 @@
 not to share/
 __pycache__/
 *.pyc
+.env
+**/.env
 .venv/
 venv/
-
 web scraper/output/
 web scraper/lastrun.json
-web scraper/.env
-
-linkedin scrape/.env
-linkedin scrape/.venv/
+web scraper/assets/
 linkedin scrape/storage/
 linkedin scrape/output/
 linkedin scrape/urls.txt
+debug-*.log
