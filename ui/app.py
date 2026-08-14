@@ -330,17 +330,14 @@ def api_lead_investigate_stop():
 
 
 def _fresh_company_dossier(query: str, max_age_s: float = 6 * 3600):
-    from src.paths import COMPANY_DIR, company_key
+    from src.store import find_company_record
 
-    path = COMPANY_DIR / f"{company_key(query)}.json"
-    if not path.exists():
+    rec = find_company_record(query)
+    if not rec:
         return None
-    if time.time() - path.stat().st_mtime > max_age_s:
+    if time.time() - rec["updated_at"] > max_age_s:
         return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    data = rec["dossier"]
     ticker = ((data.get("resolved") or {}).get("ticker") or "")
     fin = data.get("financials") or {}
     overview = data.get("overview") or {}
@@ -418,49 +415,10 @@ _bookmark_refreshing: set[str] = set()
 _BOOKMARK_MAX_AGE_S = 24 * 3600
 
 
-def _dossier_from_path(path):
-    if path is None or not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+def _find_company_record(query: str):
+    from src.store import find_company_record
 
-
-def _query_matches_dossier(data: dict, query: str) -> bool:
-    q = query.lower().strip()
-    if not q or not isinstance(data, dict):
-        return False
-    from src.paths import company_key
-
-    want = company_key(query)
-    resolved = data.get("resolved") or {}
-    fields = [data.get("query"), resolved.get("ticker"), resolved.get("name")]
-    for raw in fields:
-        text = str(raw or "").strip()
-        if not text:
-            continue
-        if text.lower() == q or company_key(text) == want:
-            return True
-    return False
-
-
-def _find_company_file(query: str):
-    from src.paths import COMPANY_DIR, company_key
-
-    q = str(query or "").strip()
-    if not q:
-        return None
-    direct = COMPANY_DIR / f"{company_key(q)}.json"
-    if direct.exists():
-        return direct
-    if not COMPANY_DIR.exists():
-        return None
-    for path in COMPANY_DIR.glob("*.json"):
-        data = _dossier_from_path(path)
-        if data and _query_matches_dossier(data, q):
-            return path
-    return None
+    return find_company_record(query)
 
 
 def _refresh_bookmarked_job(queries: list[str]):
@@ -468,9 +426,9 @@ def _refresh_bookmarked_job(queries: list[str]):
 
     for query in queries:
         try:
-            path = _find_company_file(query)
+            rec = _find_company_record(query)
             run_q = query
-            prev = _dossier_from_path(path) if path else None
+            prev = rec["dossier"] if rec else None
             if prev and prev.get("query"):
                 run_q = str(prev["query"])
             asyncio.run(
@@ -510,11 +468,11 @@ def api_company_refresh():
     stale = []
     now = time.time()
     for q in queries:
-        path = _find_company_file(q)
-        existing = _dossier_from_path(path) if path else None
+        rec = _find_company_record(q)
+        existing = rec["dossier"] if rec else None
         if existing:
             reports.append(existing)
-        fresh = bool(path and (now - path.stat().st_mtime) <= _BOOKMARK_MAX_AGE_S)
+        fresh = bool(rec and (now - rec["updated_at"]) <= _BOOKMARK_MAX_AGE_S)
         if not fresh:
             stale.append(q)
     to_run: list[str] = []
@@ -683,35 +641,73 @@ def api_linkedin_search():
         return _json_error(str(exc))
 
 
-COMPANY_DIR = SECRETS / "web scraper" / "output" / "company"
-
-
 @app.get("/api/reports")
 def api_reports():
-    reports = []
-    if COMPANY_DIR.exists():
-        for f in sorted(COMPANY_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                reports.append(data)
-            except Exception:
-                pass
-    return jsonify({"ok": True, "reports": reports})
+    from src.store import list_companies
+
+    return jsonify({"ok": True, "reports": list_companies()})
 
 
 @app.get("/api/stats")
 def api_stats():
-    reports = []
-    if COMPANY_DIR.exists():
-        for f in COMPANY_DIR.glob("*.json"):
-            try:
-                reports.append(json.loads(f.read_text(encoding="utf-8")))
-            except Exception:
-                pass
+    from src.store import list_companies
+
+    reports = list_companies()
     return jsonify({
         "ok": True,
         "total_companies": len(reports),
     })
+
+
+@app.get("/api/workspace")
+def api_workspace_get():
+    from src.store import get_workspace
+
+    data = get_workspace()
+    return jsonify({"ok": True, **data})
+
+
+@app.put("/api/workspace")
+def api_workspace_put():
+    from src.store import put_workspace
+
+    data = request.get_json(silent=True) or {}
+    bookmarks = data.get("bookmarks") if isinstance(data.get("bookmarks"), list) else []
+    leads = data.get("leads") if isinstance(data.get("leads"), list) else []
+    linkedin = data.get("linkedin") if isinstance(data.get("linkedin"), dict) else {}
+    put_workspace(bookmarks, leads, linkedin)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/bookmarks")
+def api_bookmarks_get():
+    from src.store import list_bookmarks
+
+    return jsonify({"ok": True, "bookmarks": list_bookmarks()})
+
+
+@app.post("/api/bookmarks")
+def api_bookmarks_add():
+    from src.store import add_bookmark, list_bookmarks
+
+    data = request.get_json(silent=True) or {}
+    key = str(data.get("key") or "").strip()
+    if not key:
+        return _json_error("Missing company key")
+    add_bookmark(key)
+    return jsonify({"ok": True, "bookmarks": list_bookmarks()})
+
+
+@app.delete("/api/bookmarks")
+def api_bookmarks_remove():
+    from src.store import list_bookmarks, remove_bookmark
+
+    data = request.get_json(silent=True) or {}
+    key = str(data.get("key") or request.args.get("key") or "").strip()
+    if not key:
+        return _json_error("Missing company key")
+    remove_bookmark(key)
+    return jsonify({"ok": True, "bookmarks": list_bookmarks()})
 
 
 FRONT_DIR = ROOT / "front"
@@ -731,7 +727,7 @@ def serve_front(subpath="index.html"):
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     return response
 
 

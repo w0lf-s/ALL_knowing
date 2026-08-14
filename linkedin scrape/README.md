@@ -10,7 +10,6 @@ Use the shared venv and the single env file under `not to share\`:
 
 ```powershell
 .\not to share\.venv\Scripts\Activate.ps1
-copy "not to share\.env.example" "not to share\.env"
 ```
 
 Set `LINKEDIN_EMAIL` and `LINKEDIN_PASSWORD` in `not to share\.env`. Put profile URLs in `not to share\linkedin\urls.txt` (one per line).

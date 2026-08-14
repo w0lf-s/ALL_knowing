@@ -117,6 +117,7 @@ class News(BaseModel):
     digest_summary: str | None = None
     lookback_days: int = 3
     articles: list[NewsArticle] = Field(default_factory=list)
+    fetched_at: str | None = None
 
 
 class PressItem(BaseModel):

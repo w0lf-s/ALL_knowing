@@ -236,6 +236,24 @@ def merge_dossier(
         overview.headquarters = facts.get("headquarters") or (", ".join(hq_bits) or None)
     if not overview.founded and facts.get("founded"):
         overview.founded = facts["founded"]
+    name = overview.legal_name or resolved.name or query
+    ticker = resolved.ticker
+    kind = overview.industry or overview.sector
+    country = overview.country
+    label = name or "This company"
+    if ticker:
+        label = f"{label} ({ticker})"
+    if kind:
+        summary = f"{label} is a {kind} company"
+    else:
+        summary = f"{label} is a publicly listed company"
+    if country:
+        summary += f" based in {country}"
+    summary += "."
+    if not (overview.short_description or "").strip():
+        overview.short_description = summary
+    if not (overview.description or "").strip():
+        overview.description = overview.short_description or summary
     if profile:
         _add_via(overview_via, "finnhub")
     if av_data:
@@ -446,7 +464,12 @@ def merge_dossier(
         overview=overview,
         financials=fin,
         filings=filings,
-        news=News(digest_summary=None, lookback_days=lookback_days, articles=articles),
+        news=News(
+            digest_summary=None,
+            lookback_days=lookback_days,
+            articles=articles,
+            fetched_at=generated_at if articles else None,
+        ),
         press=press,
         github=github,
         sources_status=status,

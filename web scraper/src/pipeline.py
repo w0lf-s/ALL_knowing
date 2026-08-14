@@ -30,6 +30,7 @@ from src.merge import is_english_article, merge_dossier, merge_news_articles
 from src.news_enrich import enrich_articles, is_error_article, needs_content, pick_best_articles
 from src.news_relevance import filter_relevant_articles
 from src.paths import COMPANY_DIR, LASTRUN, RAW_DIR, company_key, ensure_dirs
+from src.store import get_company, news_is_fresh, put_company
 from src.rate_limit import RateLimits
 from src.resolve import resolve_identity
 from src.schema import CompanyDossier
@@ -258,13 +259,11 @@ async def run_pipeline(
         _emit(90, "Merging and saving results")
         company_path = COMPANY_DIR / f"{key}.json"
         prev_news = None
-        if (lite or skip_news) and company_path.exists():
-            try:
-                prev = json.loads(company_path.read_text(encoding="utf-8"))
-                if isinstance(prev.get("news"), dict):
+        if lite or skip_news:
+            prev = get_company(key)
+            if prev and isinstance(prev.get("news"), dict) and prev["news"].get("articles"):
+                if news_is_fresh(prev["news"].get("fetched_at") or ((prev.get("meta") or {}).get("generated_at"))):
                     prev_news = prev["news"]
-            except Exception:
-                prev_news = None
         dossier = merge_dossier(
             query,
             ctx,
@@ -287,11 +286,11 @@ async def run_pipeline(
             if prev_news:
                 save_payload["news"] = prev_news
             payload["news"] = {"digest_summary": None, "lookback_days": lookback, "articles": []}
-            _write_json(company_path, save_payload)
+            put_company(key, save_payload)
             _write_json(LASTRUN, save_payload)
             _emit(100, "Complete")
             return CompanyDossier.model_validate(payload)
-        _write_json(company_path, payload)
+        put_company(key, payload)
         _write_json(LASTRUN, payload)
         _emit(100, "Complete")
         return dossier
@@ -351,6 +350,7 @@ async def fetch_company_news(
             "ticker": ctx.ticker,
             "articles": articles,
             "lookback_days": lookback,
+            "fetched_at": generated_at,
         }
     finally:
         await http.aclose()

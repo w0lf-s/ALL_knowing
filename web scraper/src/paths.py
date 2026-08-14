@@ -8,6 +8,8 @@ RAW_DIR = OUTPUT / "raw"
 COMPANY_DIR = OUTPUT / "company"
 NEWS_DIR = OUTPUT / "news"
 LASTRUN = PRIVATE_DIR / "lastrun.json"
+WORKSPACE_PATH = PRIVATE_DIR / "workspace.json"
+BOOKMARKS_PATH = PRIVATE_DIR / "bookmarks.json"
 
 
 def company_key(query: str) -> str:

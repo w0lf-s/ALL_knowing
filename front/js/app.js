@@ -116,7 +116,21 @@ function saveState() {
             })),
         };
         sessionStorage.setItem('zuntraFrontUi', JSON.stringify(snapshot));
+        persistWorkspace(snapshot);
     } catch (_) {}
+}
+function persistWorkspace(snapshot) {
+    if (persistWorkspace._timer) clearTimeout(persistWorkspace._timer);
+    persistWorkspace._timer = setTimeout(() => {
+        fetch('/api/workspace', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                leads: snapshot.leads || [],
+                linkedin: snapshot.linkedin || {},
+            }),
+        }).catch(() => {});
+    }, 300);
 }
 function loadState() {
     try {
@@ -141,6 +155,39 @@ function loadState() {
         if (parsed.tab) state.tab = parsed.tab;
         if (parsed.reports) state.reports = parsed.reports;
         if (Array.isArray(parsed.bookmarks)) state.bookmarks = parsed.bookmarks;
+    } catch (_) {}
+}
+function applyWorkspace(data) {
+    if (!data) return;
+    if (Array.isArray(data.bookmarks)) state.bookmarks = data.bookmarks;
+    if (Array.isArray(data.leads)) {
+        state.leads = data.leads.map(lead => ({
+            ...lead,
+            investigating: false,
+            newsLookedUp: !!lead.newsLookedUp,
+            newsLoading: false,
+            progressPct: 0,
+            progressStep: '',
+        }));
+    }
+    if (data.linkedin && typeof data.linkedin === 'object') {
+        state.linkedin = data.linkedin;
+        state.linkedin.searching = false;
+    }
+}
+async function loadWorkspace() {
+    loadState();
+    try {
+        const res = await fetch('/api/workspace');
+        const data = await res.json();
+        if (!data || !data.ok) return;
+        if (Array.isArray(data.bookmarks)) state.bookmarks = data.bookmarks;
+        const remoteLeads = Array.isArray(data.leads) ? data.leads : [];
+        const remoteLi = data.linkedin && typeof data.linkedin === 'object' ? data.linkedin : {};
+        const liHas = !!(remoteLi.url || remoteLi.company || (remoteLi.profiles || []).length || (remoteLi.candidates || []).length);
+        const hasRemote = remoteLeads.length || liHas;
+        if (hasRemote) applyWorkspace({ ...data, bookmarks: state.bookmarks });
+        else queueSaveState();
     } catch (_) {}
 }
 function queueSaveState() {
@@ -207,23 +254,6 @@ function isBookmarked(c) {
     return !!key && (state.bookmarks || []).includes(key);
 }
 
-function knownCompanyKeys() {
-    const keys = new Set();
-    (state.reports || []).forEach(r => {
-        const k = companyKey(r);
-        if (k) keys.add(k);
-    });
-    (state.leads || []).forEach(lead => {
-        const k = leadCompanyKey(lead);
-        if (k) keys.add(k);
-    });
-    if (state.company && state.company.dossier) {
-        const k = companyKey(state.company.dossier);
-        if (k) keys.add(k);
-    }
-    return keys;
-}
-
 function dashboardCompanies() {
     const byKey = new Map();
     (state.reports || []).forEach(r => {
@@ -266,6 +296,18 @@ function toggleBookmark(key) {
     const cur = state.bookmarks || [];
     const adding = !cur.includes(key);
     state.bookmarks = adding ? cur.concat(key) : cur.filter(k => k !== key);
+    fetch('/api/bookmarks', {
+        method: adding ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+    }).then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (data && Array.isArray(data.bookmarks)) state.bookmarks = data.bookmarks;
+        renderDashboard();
+        renderLeadList();
+        renderCompanyPanel();
+        refreshStats();
+    }).catch(() => {});
     saveState();
     renderDashboard();
     renderLeadList();
@@ -394,8 +436,6 @@ function renderDashboard() {
             return name.includes(q) || ind.includes(q);
         });
     }
-    const known = knownCompanyKeys();
-    state.bookmarks = (state.bookmarks || []).filter(k => known.has(k));
     refreshStats();
     if (!list.length) {
         grid.innerHTML = '';
@@ -995,6 +1035,7 @@ async function lookupLeadNews(id) {
             digest_summary: null,
             lookback_days: data.lookback_days || 3,
             articles: data.articles || [],
+            fetched_at: data.fetched_at || null,
         };
         lead.newsLookedUp = true;
     } catch (err) {
@@ -1436,13 +1477,14 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     }
 });
 
-loadState();
-if (!state.leads) state.leads = [];
-loadSampleLeads().then(() => {
-    const hash = (location.hash || '#dashboard').replace('#', '');
-    const valid = ['dashboard', 'lead', 'company', 'linkedin'];
-    const initial = valid.includes(hash) ? hash : (state.tab || 'dashboard');
-    switchTab(initial);
+loadWorkspace().then(() => {
+    if (!state.leads) state.leads = [];
+    loadSampleLeads().then(() => {
+        const hash = (location.hash || '#dashboard').replace('#', '');
+        const valid = ['dashboard', 'lead', 'company', 'linkedin'];
+        const initial = valid.includes(hash) ? hash : (state.tab || 'dashboard');
+        switchTab(initial);
+    });
+    loadReports().then(() => refreshBookmarkedCompanies());
+    loadStats();
 });
-loadReports().then(() => refreshBookmarkedCompanies());
-loadStats();
