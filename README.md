@@ -174,7 +174,6 @@ Ctrl+C in the terminal stops the server.
 
 ## Notes
 
-- Do not commit `not to share/`, `.env`, or API keys
 - Company Search includes news; Lead investigation does not until **Look up news**
 - LinkedIn automation can break when the site changes, and accounts can be restricted — keep volume low
 - Without Playwright Chromium, company search still runs; article bodies stay thin
