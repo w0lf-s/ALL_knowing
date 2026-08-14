@@ -583,7 +583,7 @@ def api_linkedin_search():
         script = _LI_SEARCH.format(
             lf_root=str(LEAD_FINDER_DIR).replace("\\", "\\\\")
         )
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [
                 str(VENV_PYTHON),
                 "-c",
@@ -592,16 +592,21 @@ def api_linkedin_search():
                 company,
                 str(max(1, min(max_profiles, 10))),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=90,
             cwd=str(LEAD_FINDER_DIR),
             env={**os.environ, "HEADLESS": "true"},
         )
+        try:
+            stdout, stderr = proc.communicate(timeout=180)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(proc)
+            return _json_error("LinkedIn search timed out. LinkedIn may be slow or asking for a login checkpoint.", 504)
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "").strip()
+            err = (stderr or stdout or "").strip()
             return _json_error(err.splitlines()[-1] if err else "LinkedIn search failed")
-        payload = _last_json_line(proc.stdout)
+        payload = _last_json_line(stdout)
         candidates = payload if isinstance(payload, list) else []
         urls = [c.get("url") for c in candidates if isinstance(c, dict) and c.get("url")]
         return jsonify({
@@ -609,8 +614,6 @@ def api_linkedin_search():
             "candidates": candidates,
             "candidate_urls": urls,
         })
-    except subprocess.TimeoutExpired:
-        return _json_error("LinkedIn search timed out", 504)
     except Exception as exc:
         return _json_error(str(exc))
 

@@ -56,16 +56,16 @@ def search_people_urls(
             page.goto(
                 _search_url(name, company),
                 wait_until="domcontentloaded",
-                timeout=90000,
+                timeout=45000,
             )
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(2000)
             try:
-                page.wait_for_selector('a[href*="/in/"]', timeout=15000)
+                page.wait_for_selector('a[href*="/in/"]', timeout=12000)
             except Exception:
                 pass
             for _ in range(3):
                 page.mouse.wheel(0, 2400)
-                page.wait_for_timeout(800)
+                page.wait_for_timeout(600)
             items = page.eval_on_selector_all(
                 'a[href*="/in/"]',
                 """els => els.map(e => {
