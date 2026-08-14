@@ -1,5 +1,3 @@
-import csv
-import json
 import random
 import time
 from pathlib import Path
@@ -7,15 +5,11 @@ from typing import Any
 
 from src.auth import create_authenticated_context, open_playwright
 from src.config import (
-    RESULTS_CSV,
-    RESULTS_JSON,
-    SUMMARY_JSON,
     URLS_PATH,
     Settings,
-    ensure_dirs,
     get_settings,
 )
-from src.extract import extract_profile, is_successful_row
+from src.extract import extract_profile
 
 
 def load_urls(path: Path = URLS_PATH) -> list[str]:
@@ -30,83 +24,15 @@ def load_urls(path: Path = URLS_PATH) -> list[str]:
     return urls
 
 
-def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
-    flat = dict(row)
-    links = flat.get("links") or []
-    other = flat.get("other_channels") or []
-    if isinstance(links, list):
-        rendered: list[str] = []
-        for item in links:
-            if isinstance(item, dict):
-                title = str(item.get("title") or "").strip()
-                url = str(item.get("url") or "").strip()
-                if title and url:
-                    rendered.append(f"{title} | {url}")
-                elif url:
-                    rendered.append(url)
-            elif item:
-                rendered.append(str(item))
-        flat["links"] = "; ".join(rendered)
-    flat["other_channels"] = "; ".join(other) if isinstance(other, list) else other
-    return flat
-
-
-def write_results(rows: list[dict[str, Any]]) -> None:
-    ensure_dirs()
-    RESULTS_JSON.write_text(
-        json.dumps(rows, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    fieldnames = [
-        "url",
-        "name",
-        "headline",
-        "current_role",
-        "current_company",
-        "location",
-        "about",
-        "email",
-        "phone",
-        "links",
-        "twitter",
-        "linkedin_profile_url",
-        "other_channels",
-        "error",
-    ]
-    with RESULTS_CSV.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(_serialize_row(row))
-
-
-def write_summary(total: int, success: int, failed: int) -> None:
-    ensure_dirs()
-    SUMMARY_JSON.write_text(
-        json.dumps(
-            {
-                "total": total,
-                "success": success,
-                "failed": failed,
-                "results_json": str(RESULTS_JSON),
-                "results_csv": str(RESULTS_CSV),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-
-def run(settings: Settings | None = None, on_progress=None) -> list[dict[str, Any]]:
+def run(
+    settings: Settings | None = None,
+    on_progress=None,
+    urls: list[str] | None = None,
+) -> list[dict[str, Any]]:
     settings = settings or get_settings()
-    ensure_dirs()
-    urls = load_urls()
+    urls = [str(u).strip() for u in (urls or load_urls()) if str(u).strip()]
     if not urls:
-        write_results([])
-        write_summary(0, 0, 0)
-        raise RuntimeError(
-            "No profile URLs found in urls.txt. Add one URL per line without a leading #."
-        )
+        raise RuntimeError("No profile URLs provided")
 
     playwright = open_playwright()
     browser = None
@@ -137,9 +63,6 @@ def run(settings: Settings | None = None, on_progress=None) -> list[dict[str, An
                     "profile": row,
                 })
             if row.get("error") == "auth_required":
-                write_results(results)
-                success = sum(1 for r in results if is_successful_row(r))
-                write_summary(len(results), success, len(results) - success)
                 raise RuntimeError(f"Authentication required while visiting {url}")
             if index < len(urls) - 1:
                 delay = random.uniform(
@@ -152,7 +75,4 @@ def run(settings: Settings | None = None, on_progress=None) -> list[dict[str, An
             browser.close()
         playwright.stop()
 
-    write_results(results)
-    success = sum(1 for r in results if is_successful_row(r))
-    write_summary(len(results), success, len(results) - success)
     return results

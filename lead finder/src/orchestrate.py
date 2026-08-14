@@ -10,11 +10,8 @@ from typing import Any
 from rich.console import Console
 
 from src.config import (
-    CANDIDATE_URLS_PATH,
-    LAST_RUN_JSON,
     VENV_PYTHON,
     WEB_SCRAPER_DIR,
-    ensure_dirs,
 )
 from src.display import (
     show_candidate_urls,
@@ -24,7 +21,7 @@ from src.display import (
     show_step,
 )
 from src.email_parse import ParsedEmail, classify_email
-from src.linkedin_search import search_people_urls, write_urls
+from src.linkedin_search import search_people_urls
 from src.path_swap import linkedin_src_path
 
 
@@ -67,10 +64,9 @@ def run_linkedin_scrape(urls: list[str], *, headless: bool = True) -> list[dict[
     if not urls:
         return []
     with linkedin_src_path():
-        from src.config import URLS_PATH, get_settings
+        from src.config import get_settings
         from src.scraper import run
 
-        write_urls(URLS_PATH, urls)
         settings = get_settings()
         settings.headless = headless
         if headless:
@@ -79,7 +75,7 @@ def run_linkedin_scrape(urls: list[str], *, headless: bool = True) -> list[dict[
             )
             settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
             settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
-        return run(settings)
+        return run(settings, urls=urls)
 
 
 def run_lead_finder(
@@ -92,7 +88,6 @@ def run_lead_finder(
     headless: bool = True,
     live: bool = True,
 ) -> dict[str, Any]:
-    ensure_dirs()
     console = Console(force_terminal=True, legacy_windows=False) if live else None
     parsed: ParsedEmail = classify_email(email)
     out: dict[str, Any] = {
@@ -106,7 +101,7 @@ def run_lead_finder(
         "profiles": [],
         "scrape_error": None,
         "skip_search": False,
-        "saved_to": str(LAST_RUN_JSON),
+        "saved_to": None,
     }
 
     if live:
@@ -149,7 +144,6 @@ def run_lead_finder(
             )
             out["candidates"] = candidates
             out["candidate_urls"] = [c["url"] for c in candidates]
-            write_urls(CANDIDATE_URLS_PATH, out["candidate_urls"])
         except Exception as exc:
             out["search_error"] = str(exc)
         if live:
@@ -178,10 +172,4 @@ def run_lead_finder(
     elif no_scrape and live and out["candidate_urls"]:
         show_step("Skipped profile scrape (--no-scrape)", console)
 
-    LAST_RUN_JSON.write_text(
-        json.dumps(out, ensure_ascii=False, indent=2, default=str),
-        encoding="utf-8",
-    )
-    if live and out.get("saved_to"):
-        console.print(f"\nSaved run to {out['saved_to']}")
     return out

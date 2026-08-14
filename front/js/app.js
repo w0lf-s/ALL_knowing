@@ -127,12 +127,20 @@ function saveState() {
 function persistWorkspace(snapshot) {
     if (persistWorkspace._timer) clearTimeout(persistWorkspace._timer);
     persistWorkspace._timer = setTimeout(() => {
+        const li = snapshot.linkedin || {};
         fetch('/api/workspace', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 leads: snapshot.leads || [],
-                linkedin: snapshot.linkedin || {},
+                linkedin: {
+                    url: li.url || '',
+                    company: li.company || '',
+                    profiles: li.profiles || [],
+                    candidateUrls: li.candidateUrls || [],
+                    candidates: li.candidates || [],
+                    searched: !!li.searched,
+                },
             }),
         }).catch(() => {});
     }, 300);
@@ -240,16 +248,12 @@ function switchTab(tab) {
     document.querySelectorAll('.panel').forEach(panel => {
         panel.classList.toggle('active', panel.id === `panel-${tab}`);
     });
-    if (state.company.searching) {
-        if (tab === 'company') syncCompanySearchUi();
-    } else {
+    if (!state.company.searching) {
         setLoading('company-loading', false);
         if ($('company-progress')) $('company-progress').style.display = 'none';
         if ($('company-progress-fill')) $('company-progress-fill').style.width = '0%';
     }
-    if (state.linkedin.searching) {
-        if (tab === 'linkedin') syncLinkedinSearchUi();
-    } else {
+    if (!state.linkedin.searching) {
         setLoading('linkedin-loading', false);
         if ($('linkedin-progress')) $('linkedin-progress').style.display = 'none';
         if ($('linkedin-progress-fill')) $('linkedin-progress-fill').style.width = '0%';

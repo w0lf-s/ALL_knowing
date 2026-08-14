@@ -355,37 +355,6 @@ nav.tabs button.active {
     margin-top: 0.25rem;
 }
 
-.score-badge {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 1.1rem;
-    border: 2px solid;
-    flex-shrink: 0;
-}
-
-.score-high {
-    border-color: var(--success);
-    color: var(--success);
-    background: rgba(16, 185, 129, 0.1);
-}
-
-.score-med {
-    border-color: var(--warning);
-    color: var(--warning);
-    background: rgba(245, 158, 11, 0.1);
-}
-
-.score-low {
-    border-color: var(--danger);
-    color: var(--danger);
-    background: rgba(239, 68, 68, 0.1);
-}
-
 .card-summary {
     color: var(--muted);
     font-size: 0.9rem;

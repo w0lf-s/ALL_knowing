@@ -12,17 +12,17 @@ ROOT = Path(__file__).resolve().parent.parent
 SECRETS = ROOT / "not to share"
 VENV_PYTHON = SECRETS / ".venv" / "Scripts" / "python.exe"
 LEAD_FINDER_DIR = ROOT / "lead finder"
-COOKIES_DIR = SECRETS / "lead finder" / "cookies"
 
 from dotenv import load_dotenv
 
 load_dotenv(SECRETS / ".env")
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 app = Flask(__name__)
 
 sys.path.insert(0, str(ROOT / "web scraper"))
+FRONT_DIR = ROOT / "front"
 
 
 @app.route("/")
@@ -31,19 +31,16 @@ sys.path.insert(0, str(ROOT / "web scraper"))
 @app.route("/linkedin")
 @app.route("/dashboard")
 def index():
-    from flask import send_from_directory
     return send_from_directory(str(FRONT_DIR), "index.html")
 
 
 @app.route("/css/<path:subpath>")
 def serve_css(subpath):
-    from flask import send_from_directory
     return send_from_directory(str(FRONT_DIR / "css"), subpath)
 
 
 @app.route("/js/<path:subpath>")
 def serve_js(subpath):
-    from flask import send_from_directory
     return send_from_directory(str(FRONT_DIR / "js"), subpath)
 
 
@@ -84,10 +81,9 @@ def _kill_process_tree(proc: subprocess.Popen | None) -> None:
 _LI_RUNNER = """
 import json, sys
 sys.path.insert(0, r"{li_root}")
-from src.config import URLS_PATH, get_settings, ensure_dirs
+from src.config import get_settings, ensure_dirs
 from src.scraper import run
 ensure_dirs()
-URLS_PATH.parent.mkdir(parents=True, exist_ok=True)
 raw = sys.argv[1]
 try:
     parsed = json.loads(raw)
@@ -102,7 +98,6 @@ except Exception:
 if not urls:
     print("[]")
     raise SystemExit(0)
-URLS_PATH.write_text("\\n".join(urls) + "\\n", encoding="utf-8")
 settings = get_settings()
 settings.headless = True
 settings.checkpoint_timeout_seconds = min(settings.checkpoint_timeout_seconds, 20)
@@ -110,7 +105,7 @@ settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
 settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
 def _emit(obj):
     print(json.dumps(obj, default=str), flush=True)
-rows = run(settings, on_progress=_emit)
+rows = run(settings, on_progress=_emit, urls=urls)
 print(json.dumps(rows or [], default=str), flush=True)
 """
 
@@ -731,13 +726,9 @@ def api_bookmarks_remove():
     return jsonify({"ok": True, "bookmarks": list_bookmarks()})
 
 
-FRONT_DIR = ROOT / "front"
-
-
 @app.route("/front/")
 @app.route("/front/<path:subpath>")
 def serve_front(subpath="index.html"):
-    from flask import send_from_directory
     fp = FRONT_DIR / subpath
     if fp.exists() and fp.is_file():
         return send_from_directory(str(FRONT_DIR), subpath)

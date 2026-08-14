@@ -6,8 +6,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from playwright.sync_api import Locator, Page, Response
 
-from src.config import DEBUG_JSON, ensure_dirs
-
 VOYAGER_URL_MARKERS = (
     "/voyager/api/identity/dash/profiles",
     "/profileView",
@@ -955,44 +953,7 @@ def _page_looks_like_authwall(page: Page) -> bool:
 
 
 def _write_debug(page: Page, url: str, captured_count: int, data: dict[str, Any]) -> None:
-    ensure_dirs()
-    main_len = 0
-    title = ""
-    contact_links: list[dict[str, str]] = []
-    try:
-        title = page.title()
-    except Exception:
-        pass
-    try:
-        main_len = len(page.locator("main").inner_text(timeout=2000))
-    except Exception:
-        try:
-            main_len = len(page.locator("body").inner_text(timeout=2000))
-        except Exception:
-            main_len = 0
-    try:
-        contact_links = _collect_links_via_js(page, scope="contact")[:20]
-    except Exception:
-        contact_links = []
-    DEBUG_JSON.write_text(
-        json.dumps(
-            {
-                "url": url,
-                "final_url": page.url,
-                "title": title,
-                "captured_endpoint_count": captured_count,
-                "main_text_length": main_len,
-                "name": data.get("name"),
-                "headline": data.get("headline"),
-                "links": data.get("links"),
-                "email": data.get("email"),
-                "contact_links": contact_links,
-                "error": data.get("error"),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    return
 
 
 def _extract_dom_profile(page: Page, data: dict[str, Any]) -> None:

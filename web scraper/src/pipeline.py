@@ -30,7 +30,7 @@ from src.merge import is_english_article, merge_dossier, merge_news_articles
 from src.news_enrich import enrich_articles, is_error_article, needs_content, pick_best_articles
 from src.news_relevance import filter_relevant_articles
 from src.paths import COMPANY_DIR, LASTRUN, RAW_DIR, company_key, ensure_dirs
-from src.store import get_company, news_is_fresh, put_company
+from src.store import get_company, news_is_fresh, put_company, using_db
 from src.rate_limit import RateLimits
 from src.resolve import resolve_identity
 from src.schema import CompanyDossier
@@ -62,7 +62,8 @@ async def run_pipeline(
     skip_news: bool = False,
     lite: bool = False,
 ) -> CompanyDossier:
-    ensure_dirs()
+    if not using_db():
+        ensure_dirs()
     key = company_key(query)
     lookback = int(os.getenv("NEWS_LOOKBACK_DAYS", "3"))
     generated_at = datetime.now(timezone.utc).isoformat()
@@ -254,7 +255,8 @@ async def run_pipeline(
             "news_articles": articles,
             "fetched_at": generated_at,
         }
-        _write_json(raw_path, raw_bundle)
+        if not using_db():
+            _write_json(raw_path, raw_bundle)
 
         _emit(90, "Merging and saving results")
         company_path = COMPANY_DIR / f"{key}.json"
@@ -287,11 +289,13 @@ async def run_pipeline(
                 save_payload["news"] = prev_news
             payload["news"] = {"digest_summary": None, "lookback_days": lookback, "articles": []}
             put_company(key, save_payload)
-            _write_json(LASTRUN, save_payload)
+            if not using_db():
+                _write_json(LASTRUN, save_payload)
             _emit(100, "Complete")
             return CompanyDossier.model_validate(payload)
         put_company(key, payload)
-        _write_json(LASTRUN, payload)
+        if not using_db():
+            _write_json(LASTRUN, payload)
         _emit(100, "Complete")
         return dossier
     finally:
@@ -304,7 +308,8 @@ async def fetch_company_news(
     use_groq: bool = True,
     use_playwright: bool = True,
 ) -> dict[str, Any]:
-    ensure_dirs()
+    if not using_db():
+        ensure_dirs()
     lookback = int(os.getenv("NEWS_LOOKBACK_DAYS", "3"))
     http = HttpClient()
     limits = RateLimits()

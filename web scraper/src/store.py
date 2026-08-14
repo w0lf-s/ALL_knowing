@@ -67,6 +67,10 @@ def _sb():
     return _client
 
 
+def using_db() -> bool:
+    return _sb() is not None
+
+
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -133,7 +137,7 @@ def get_cached(source: str, key: str, ttl_seconds: int) -> Any | None:
                     return rows[0].get("data")
         except Exception:
             pass
-    path = cache_path(source, key)
+    path = CACHE / source / f"{_safe_key(key)}.json"
     payload = _read_json(path)
     if not isinstance(payload, dict):
         return None
@@ -155,10 +159,10 @@ def get_cached(source: str, key: str, ttl_seconds: int) -> Any | None:
 def set_cached(source: str, key: str, data: Any) -> None:
     fetched_at = _now_iso()
     payload = {"fetched_at": fetched_at, "data": data}
-    path = cache_path(source, key)
-    path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
     client = _sb()
     if client is None:
+        path = cache_path(source, key)
+        path.write_text(json.dumps(payload, ensure_ascii=False, default=str), encoding="utf-8")
         return
     try:
         client.table("source_cache").upsert(
@@ -195,7 +199,7 @@ def load_news_day(ckey: str, day: str | None = None) -> dict[str, Any] | None:
                 client.table("news_days").delete().eq("company_key", ckey).eq("day", d).execute()
         except Exception:
             pass
-    path = news_day_path(ckey, d)
+    path = NEWS_DIR / ckey / f"{d}.json"
     data = _read_json(path)
     if isinstance(data, dict) and news_is_fresh(data.get("fetched_at") or d):
         return data
@@ -206,8 +210,7 @@ def load_news_day(ckey: str, day: str | None = None) -> dict[str, Any] | None:
 
 def save_news_day(ckey: str, data: dict[str, Any], day: str | None = None) -> Path:
     d = day or datetime.now(timezone.utc).date().isoformat()
-    path = news_day_path(ckey, d)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    path = NEWS_DIR / ckey / f"{d}.json"
     client = _sb()
     if client is not None:
         try:
@@ -220,6 +223,8 @@ def save_news_day(ckey: str, data: dict[str, Any], day: str | None = None) -> Pa
             ).execute()
         except Exception:
             pass
+        return path
+    news_day_path(ckey, d).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return path
 
 
@@ -322,16 +327,16 @@ def _ensure_dossier_summary(dossier: dict[str, Any]) -> tuple[dict, bool]:
     return out, True
 
 
-def _persist_company(key: str, dossier: dict[str, Any], updated_at: float | None = None, disk: bool = True) -> None:
+def _persist_company(key: str, dossier: dict[str, Any], updated_at: float | None = None, disk: bool = False) -> None:
     dossier, _ = _ensure_dossier_summary(dossier)
-    if disk:
+    client = _sb()
+    if client is None or disk:
         ensure_dirs()
         path = COMPANY_DIR / f"{key}.json"
         _write_json(path, dossier)
-    resolved = dossier.get("resolved") or {}
-    client = _sb()
     if client is None:
         return
+    resolved = dossier.get("resolved") or {}
     stamp = _now_iso()
     if updated_at:
         stamp = datetime.fromtimestamp(updated_at, tz=timezone.utc).isoformat()
@@ -350,7 +355,7 @@ def _persist_company(key: str, dossier: dict[str, Any], updated_at: float | None
         pass
 
 
-def put_company(key: str, dossier: dict[str, Any], *, disk: bool = True) -> None:
+def put_company(key: str, dossier: dict[str, Any], *, disk: bool = False) -> None:
     _persist_company(key, dossier, disk=disk)
 
 
@@ -518,12 +523,12 @@ def add_bookmark(key: str) -> None:
     k = str(key or "").strip()
     if not k:
         return
-    local = _local_bookmark_keys()
-    if k not in local:
-        local.append(k)
-        _write_local_bookmarks(local)
     client = _sb()
     if client is None:
+        local = _local_bookmark_keys()
+        if k not in local:
+            local.append(k)
+            _write_local_bookmarks(local)
         return
     try:
         client.table("bookmarks").upsert({"company_key": k, "created_at": _now_iso()}).execute()
@@ -535,9 +540,9 @@ def remove_bookmark(key: str) -> None:
     k = str(key or "").strip()
     if not k:
         return
-    _write_local_bookmarks([x for x in _local_bookmark_keys() if x != k])
     client = _sb()
     if client is None:
+        _write_local_bookmarks([x for x in _local_bookmark_keys() if x != k])
         return
     try:
         client.table("bookmarks").delete().eq("company_key", k).execute()
@@ -570,18 +575,14 @@ def list_bookmarks() -> list[str]:
         try:
             res = client.table("bookmarks").select("company_key").order("created_at").execute()
             keys = [str(r.get("company_key") or "").strip() for r in (res.data or []) if str(r.get("company_key") or "").strip()]
-            if keys:
-                _write_local_bookmarks(keys)
-                return keys
+            return keys
         except Exception:
             pass
         _migrate_workspace_bookmarks()
         try:
             res = client.table("bookmarks").select("company_key").order("created_at").execute()
             keys = [str(r.get("company_key") or "").strip() for r in (res.data or []) if str(r.get("company_key") or "").strip()]
-            if keys:
-                _write_local_bookmarks(keys)
-                return keys
+            return keys
         except Exception:
             pass
     local = _local_bookmark_keys()
@@ -634,19 +635,52 @@ def get_workspace() -> dict[str, Any]:
     return {"exists": False, "bookmarks": list_bookmarks(), "leads": [], "linkedin": {}}
 
 
+def _workspace_linkedin(linkedin: Any) -> dict[str, Any]:
+    if not isinstance(linkedin, dict):
+        return {}
+    return {
+        "url": linkedin.get("url") or "",
+        "company": linkedin.get("company") or "",
+        "profiles": linkedin.get("profiles") if isinstance(linkedin.get("profiles"), list) else [],
+        "candidateUrls": linkedin.get("candidateUrls") if isinstance(linkedin.get("candidateUrls"), list) else [],
+        "candidates": linkedin.get("candidates") if isinstance(linkedin.get("candidates"), list) else [],
+        "searched": bool(linkedin.get("searched")),
+    }
+
+
+def _workspace_leads(leads: Any) -> list:
+    out = []
+    if not isinstance(leads, list):
+        return out
+    for lead in leads:
+        if not isinstance(lead, dict):
+            continue
+        out.append({
+            "id": lead.get("id"),
+            "email": lead.get("email"),
+            "parsed": lead.get("parsed"),
+            "from_sample_cookie": lead.get("from_sample_cookie"),
+            "result": lead.get("result"),
+            "error": lead.get("error"),
+            "viewOpen": bool(lead.get("viewOpen")),
+            "newsLookedUp": bool(lead.get("newsLookedUp")),
+        })
+    return out
+
+
 def put_workspace(bookmarks: list, leads: list, linkedin: dict) -> None:
     payload = {
-        "leads": leads if isinstance(leads, list) else [],
-        "linkedin": linkedin if isinstance(linkedin, dict) else {},
+        "leads": _workspace_leads(leads),
+        "linkedin": _workspace_linkedin(linkedin),
     }
-    WORKSPACE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    existing = _read_json(WORKSPACE_PATH)
-    disk = existing if isinstance(existing, dict) else {}
-    disk["leads"] = payload["leads"]
-    disk["linkedin"] = payload["linkedin"]
-    _write_json(WORKSPACE_PATH, disk)
     client = _sb()
     if client is None:
+        WORKSPACE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing = _read_json(WORKSPACE_PATH)
+        disk = existing if isinstance(existing, dict) else {}
+        disk["leads"] = payload["leads"]
+        disk["linkedin"] = payload["linkedin"]
+        _write_json(WORKSPACE_PATH, disk)
         return
     try:
         client.table("workspace").upsert(
