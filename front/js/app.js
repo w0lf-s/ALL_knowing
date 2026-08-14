@@ -1,8 +1,8 @@
 const state = {
     tab: 'dashboard',
     leads: [],
-    company: { query: '', dossier: null },
-    linkedin: { url: '', company: '', profiles: [], candidateUrls: [], candidates: [], searching: false, searched: false },
+    company: { query: '', dossier: null, searching: false, progressPct: 0, progressStep: '' },
+    linkedin: { url: '', company: '', profiles: [], candidateUrls: [], candidates: [], searching: false, searched: false, progressPct: 0, progressStep: '' },
     reports: [],
     bookmarks: [],
 };
@@ -10,6 +10,11 @@ const state = {
 let activeLeadInvestigation = {
     leadId: null,
     controller: null,
+};
+
+let activeLinkedinScrape = {
+    source: null,
+    stopped: false,
 };
 
 function $(id) { return document.getElementById(id); }
@@ -147,10 +152,20 @@ function loadState() {
                 progressStep: '',
             }));
         }
-        if (parsed.company) state.company = parsed.company;
+        if (parsed.company) {
+            state.company = parsed.company;
+            state.company.searching = false;
+            state.company.progressPct = 0;
+            state.company.progressStep = '';
+        }
         if (parsed.linkedin) {
             state.linkedin = parsed.linkedin;
             state.linkedin.searching = false;
+            state.linkedin.scraping = false;
+            state.linkedin.progressPct = 0;
+            state.linkedin.progressStep = '';
+            state.linkedin.scrapePct = 0;
+            state.linkedin.scrapeStep = '';
         }
         if (parsed.tab) state.tab = parsed.tab;
         if (parsed.reports) state.reports = parsed.reports;
@@ -173,6 +188,11 @@ function applyWorkspace(data) {
     if (data.linkedin && typeof data.linkedin === 'object') {
         state.linkedin = data.linkedin;
         state.linkedin.searching = false;
+        state.linkedin.scraping = false;
+        state.linkedin.progressPct = 0;
+        state.linkedin.progressStep = '';
+        state.linkedin.scrapePct = 0;
+        state.linkedin.scrapeStep = '';
     }
 }
 async function loadWorkspace() {
@@ -198,6 +218,20 @@ function uid() {
     return 'lead_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+function syncCompanySearchUi() {
+    if (!state.company.searching) return;
+    setLoading('company-loading', true, state.company.progressStep || 'Fetching company data...');
+    if ($('company-progress')) $('company-progress').style.display = 'block';
+    if ($('company-progress-fill')) $('company-progress-fill').style.width = (state.company.progressPct || 0) + '%';
+}
+
+function syncLinkedinSearchUi() {
+    if (!state.linkedin.searching) return;
+    setLoading('linkedin-loading', true, state.linkedin.progressStep || 'Searching LinkedIn...');
+    if ($('linkedin-progress')) $('linkedin-progress').style.display = 'block';
+    if ($('linkedin-progress-fill')) $('linkedin-progress-fill').style.width = (state.linkedin.progressPct || 0) + '%';
+}
+
 function switchTab(tab) {
     state.tab = tab;
     document.querySelectorAll('nav.tabs button').forEach(btn => {
@@ -206,19 +240,25 @@ function switchTab(tab) {
     document.querySelectorAll('.panel').forEach(panel => {
         panel.classList.toggle('active', panel.id === `panel-${tab}`);
     });
-    const overlay = $('loadingOverlay');
-    if (overlay) overlay.classList.remove('active');
-    const progressFill = $('progressFill');
-    if (progressFill) progressFill.style.width = '0%';
-    setLoading('company-loading', false);
-    if ($('company-progress')) $('company-progress').style.display = 'none';
-    if ($('company-progress-fill')) $('company-progress-fill').style.width = '0%';
-    setLoading('linkedin-loading', false);
-    if ($('linkedin-progress')) $('linkedin-progress').style.display = 'none';
-    if ($('linkedin-progress-fill')) $('linkedin-progress-fill').style.width = '0%';
+    if (state.company.searching) {
+        if (tab === 'company') syncCompanySearchUi();
+    } else {
+        setLoading('company-loading', false);
+        if ($('company-progress')) $('company-progress').style.display = 'none';
+        if ($('company-progress-fill')) $('company-progress-fill').style.width = '0%';
+    }
+    if (state.linkedin.searching) {
+        if (tab === 'linkedin') syncLinkedinSearchUi();
+    } else {
+        setLoading('linkedin-loading', false);
+        if ($('linkedin-progress')) $('linkedin-progress').style.display = 'none';
+        if ($('linkedin-progress-fill')) $('linkedin-progress-fill').style.width = '0%';
+    }
     history.replaceState(null, '', `#${tab}`);
     saveState();
     renderAll();
+    if (state.company.searching && tab === 'company') syncCompanySearchUi();
+    if (state.linkedin.searching && tab === 'linkedin') syncLinkedinSearchUi();
 }
 
 async function postJson(url, body, signal) {
@@ -785,6 +825,7 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
                 <button type="button" class="btn btn-primary scrape-candidates-btn" ${options.scraping ? 'disabled' : ''}>
                     ${options.scraping ? 'Scraping profiles...' : 'Scrape profiles'}
                 </button>
+                ${options.scraping ? '<button type="button" class="btn btn-ghost scrape-stop-btn">Stop</button>' : ''}
                </div>
                ${options.scraping ? `<div class="loading-inline show"><div class="spinner-sm"></div><span class="linkedin-scrape-step">${esc(options.scrapeStep || 'Scraping LinkedIn profiles...')}</span></div>
                <div class="progress-bar" style="margin-top:0.5rem"><div class="progress-fill linkedin-scrape-fill" style="width:${options.scrapePct || 8}%"></div></div>` : ''}`
@@ -990,6 +1031,9 @@ function renderLinkedinPanel() {
         results.querySelectorAll('.scrape-one-btn').forEach(btn => {
             btn.addEventListener('click', () => scrapeLinkedInCandidates(btn.dataset.url));
         });
+        results.querySelectorAll('.scrape-stop-btn').forEach(btn => {
+            btn.addEventListener('click', () => stopLinkedInScrape());
+        });
     }
 }
 
@@ -1066,6 +1110,8 @@ async function scrapeLinkedInCandidates(onlyUrl) {
     const streamUrl = `/api/linkedin/stream?urls=${encodeURIComponent(JSON.stringify(urls))}`;
     const evtSource = new EventSource(streamUrl);
     let finished = false;
+    activeLinkedinScrape.source = evtSource;
+    activeLinkedinScrape.stopped = false;
 
     function applyProgress(pct, text) {
         state.linkedin.scrapePct = pct;
@@ -1095,7 +1141,9 @@ async function scrapeLinkedInCandidates(onlyUrl) {
         if (finished) return;
         finished = true;
         evtSource.close();
-        if (err) showError($('linkedin-error'), err);
+        activeLinkedinScrape.source = null;
+        activeLinkedinScrape.finish = null;
+        if (err && !activeLinkedinScrape.stopped) showError($('linkedin-error'), err);
         state.linkedin.scraping = false;
         state.linkedin.scrapePct = 0;
         state.linkedin.scrapeStep = '';
@@ -1103,13 +1151,16 @@ async function scrapeLinkedInCandidates(onlyUrl) {
         renderLinkedinPanel();
     }
 
+    activeLinkedinScrape.finish = finish;
+
     evtSource.onmessage = function(ev) {
         let msg = {};
         try { msg = JSON.parse(ev.data); } catch (_) { return; }
         if (msg.error && msg.done) {
-            finish(msg.error);
+            finish(activeLinkedinScrape.stopped ? '' : msg.error);
             return;
         }
+        if (activeLinkedinScrape.stopped) return;
         if (msg.step) {
             applyProgress(Number(msg.pct) || state.linkedin.scrapePct || 0, msg.step);
         }
@@ -1130,8 +1181,15 @@ async function scrapeLinkedInCandidates(onlyUrl) {
         }
     };
     evtSource.onerror = function() {
-        if (!finished) finish('Connection lost');
+        if (!finished) finish(activeLinkedinScrape.stopped ? '' : 'Connection lost');
     };
+}
+
+function stopLinkedInScrape() {
+    if (!state.linkedin.scraping) return;
+    activeLinkedinScrape.stopped = true;
+    fetch('/api/linkedin/scrape/stop', { method: 'POST' }).catch(() => {});
+    if (typeof activeLinkedinScrape.finish === 'function') activeLinkedinScrape.finish();
 }
 
 async function investigateLead(id) {
@@ -1332,13 +1390,14 @@ $('company-form').addEventListener('submit', (e) => {
     if (!query) return;
     state.company.query = query;
     state.company.dossier = null;
+    state.company.searching = true;
+    state.company.progressPct = 0;
+    state.company.progressStep = 'Starting pipeline...';
     renderCompanyPanel();
     showError($('company-error'), '');
     const btn = $('company-btn');
     btn.disabled = true;
-    setLoading('company-loading', true, 'Starting pipeline...');
-    $('company-progress').style.display = 'block';
-    $('company-progress-fill').style.width = '0%';
+    syncCompanySearchUi();
 
     const url = `/api/company/stream?query=${encodeURIComponent(query)}&fast=0`;
     const evtSource = new EventSource(url);
@@ -1347,8 +1406,10 @@ $('company-form').addEventListener('submit', (e) => {
     evtSource.onmessage = function(ev) {
         try {
             const msg = JSON.parse(ev.data);
-            $('company-progress-fill').style.width = msg.pct + '%';
-            $('company-step').textContent = msg.step || '';
+            state.company.progressPct = msg.pct || 0;
+            state.company.progressStep = msg.step || '';
+            $('company-progress-fill').style.width = state.company.progressPct + '%';
+            $('company-step').textContent = state.company.progressStep;
             if (msg.done) {
                 done = true;
                 evtSource.close();
@@ -1393,6 +1454,9 @@ $('company-form').addEventListener('submit', (e) => {
     }
 
     function finishCompany() {
+        state.company.searching = false;
+        state.company.progressPct = 0;
+        state.company.progressStep = '';
         btn.disabled = false;
         setLoading('company-loading', false);
         $('company-progress').style.display = 'none';
@@ -1408,6 +1472,8 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     state.linkedin.url = raw;
     state.linkedin.company = company;
     state.linkedin.searching = true;
+    state.linkedin.progressPct = 0;
+    state.linkedin.progressStep = isLinkedInProfileUrl(raw) ? 'Launching browser...' : 'Searching LinkedIn...';
     state.linkedin.searched = false;
     state.linkedin.profiles = [];
     state.linkedin.candidates = [];
@@ -1417,9 +1483,7 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     const btn = $('linkedin-btn');
     btn.disabled = true;
     const asUrl = isLinkedInProfileUrl(raw);
-    setLoading('linkedin-loading', true, asUrl ? 'Launching browser...' : 'Searching LinkedIn...');
-    $('linkedin-progress').style.display = 'block';
-    $('linkedin-progress-fill').style.width = '0%';
+    syncLinkedinSearchUi();
 
     const steps = asUrl
         ? [
@@ -1438,8 +1502,10 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     let stepIdx = 0;
     const interval = setInterval(() => {
         if (stepIdx < steps.length) {
-            $('linkedin-progress-fill').style.width = steps[stepIdx][0] + '%';
-            $('linkedin-step').textContent = steps[stepIdx][1];
+            state.linkedin.progressPct = steps[stepIdx][0];
+            state.linkedin.progressStep = steps[stepIdx][1];
+            $('linkedin-progress-fill').style.width = state.linkedin.progressPct + '%';
+            $('linkedin-step').textContent = state.linkedin.progressStep;
             stepIdx++;
         }
     }, 4000);
@@ -1470,6 +1536,8 @@ $('linkedin-form').addEventListener('submit', async (e) => {
     } finally {
         clearInterval(interval);
         state.linkedin.searching = false;
+        state.linkedin.progressPct = 0;
+        state.linkedin.progressStep = '';
         btn.disabled = false;
         setLoading('linkedin-loading', false);
         $('linkedin-progress').style.display = 'none';

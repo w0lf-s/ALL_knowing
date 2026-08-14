@@ -317,6 +317,8 @@ _progress_queues: dict[str, queue.Queue] = {}
 
 _lead_investigation_lock = threading.Lock()
 _lead_investigation_proc: subprocess.Popen | None = None
+_linkedin_scrape_lock = threading.Lock()
+_linkedin_scrape_proc: subprocess.Popen | None = None
 
 
 @app.post("/api/lead/investigate/stop")
@@ -553,14 +555,19 @@ def api_linkedin_stream():
     script = _LI_RUNNER.format(
         li_root=str(ROOT / "linkedin scrape").replace("\\", "\\\\")
     )
-    proc = subprocess.Popen(
-        [str(VENV_PYTHON), "-c", script, json.dumps(urls)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=str(ROOT / "linkedin scrape"),
-        env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
-    )
+    global _linkedin_scrape_proc
+    with _linkedin_scrape_lock:
+        if _linkedin_scrape_proc is not None and _linkedin_scrape_proc.poll() is None:
+            _kill_process_tree(_linkedin_scrape_proc)
+        proc = subprocess.Popen(
+            [str(VENV_PYTHON), "-c", script, json.dumps(urls)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(ROOT / "linkedin scrape"),
+            env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
+        )
+        _linkedin_scrape_proc = proc
 
     def generate():
         try:
@@ -587,11 +594,25 @@ def api_linkedin_stream():
         finally:
             if proc.poll() is None:
                 _kill_process_tree(proc)
+            with _linkedin_scrape_lock:
+                if _linkedin_scrape_proc is proc:
+                    _linkedin_scrape_proc = None
 
     return Response(generate(), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
     })
+
+
+@app.post("/api/linkedin/scrape/stop")
+def api_linkedin_scrape_stop():
+    global _linkedin_scrape_proc
+    with _linkedin_scrape_lock:
+        if _linkedin_scrape_proc is None or _linkedin_scrape_proc.poll() is not None:
+            return jsonify({"ok": True})
+        _kill_process_tree(_linkedin_scrape_proc)
+        _linkedin_scrape_proc = None
+    return jsonify({"ok": True})
 
 
 @app.post("/api/linkedin/search")
