@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from src.paths import BOOKMARKS_PATH, CACHE, COMPANY_DIR, NEWS_DIR, WORKSPACE_PATH, company_key, ensure_dirs
+from src.paths import BOOKMARKS_PATH, CACHE, COMPANY_DIR, NEWS_DIR, PEOPLE_DIR, WORKSPACE_PATH, company_key, ensure_dirs
 
 _client = None
 _client_checked = False
@@ -430,27 +430,23 @@ def list_company_records() -> list[dict[str, Any]]:
                 client.table("companies")
                 .select("key, dossier, updated_at")
                 .order("updated_at", desc=True)
+                .limit(5000)
                 .execute()
             )
             out = []
             for row in res.data or []:
                 if not isinstance(row.get("dossier"), dict):
                     continue
-                dossier, changed = expire_dossier_news(row["dossier"])
-                dossier, filled = _ensure_dossier_summary(dossier)
-                rec = {
+                dossier, _changed = expire_dossier_news(row["dossier"])
+                dossier, _filled = _ensure_dossier_summary(dossier)
+                out.append({
                     "key": row.get("key") or "",
                     "dossier": dossier,
                     "updated_at": _parse_ts(row.get("updated_at")),
-                }
-                if (changed or filled) and rec["key"]:
-                    _persist_company(rec["key"], dossier, rec["updated_at"], disk=False)
-                out.append(rec)
-            if out:
-                purge_stale_news()
-                return out
+                })
+            return out
         except Exception:
-            pass
+            return []
     ensure_dirs()
     items = []
     for path in COMPANY_DIR.glob("*.json"):
@@ -532,8 +528,12 @@ def add_bookmark(key: str) -> None:
         return
     try:
         client.table("bookmarks").upsert({"company_key": k, "created_at": _now_iso()}).execute()
+        return
     except Exception:
-        pass
+        local = _local_bookmark_keys()
+        if k not in local:
+            local.append(k)
+            _write_local_bookmarks(local)
 
 
 def remove_bookmark(key: str) -> None:
@@ -570,22 +570,28 @@ def _migrate_workspace_bookmarks() -> None:
 
 
 def list_bookmarks() -> list[str]:
+    local = _local_bookmark_keys()
     client = _sb()
     if client is not None:
         try:
-            res = client.table("bookmarks").select("company_key").order("created_at").execute()
+            res = client.table("bookmarks").select("company_key").execute()
             keys = [str(r.get("company_key") or "").strip() for r in (res.data or []) if str(r.get("company_key") or "").strip()]
-            return keys
+            if keys:
+                return list(dict.fromkeys(keys))
         except Exception:
             pass
         _migrate_workspace_bookmarks()
         try:
-            res = client.table("bookmarks").select("company_key").order("created_at").execute()
+            res = client.table("bookmarks").select("company_key").execute()
             keys = [str(r.get("company_key") or "").strip() for r in (res.data or []) if str(r.get("company_key") or "").strip()]
-            return keys
+            if keys:
+                return list(dict.fromkeys(keys))
         except Exception:
             pass
-    local = _local_bookmark_keys()
+        if local:
+            for item in local:
+                add_bookmark(item)
+            return list(dict.fromkeys(local))
     if local:
         return local
     data = _read_json(WORKSPACE_PATH)
@@ -640,7 +646,12 @@ def _workspace_linkedin(linkedin: Any) -> dict[str, Any]:
         return {}
     return {
         "url": linkedin.get("url") or "",
+        "name": linkedin.get("name") or "",
         "company": linkedin.get("company") or "",
+        "role": linkedin.get("role") or "",
+        "location": linkedin.get("location") or "",
+        "email": linkedin.get("email") or "",
+        "phone": linkedin.get("phone") or "",
         "profiles": linkedin.get("profiles") if isinstance(linkedin.get("profiles"), list) else [],
         "candidateUrls": linkedin.get("candidateUrls") if isinstance(linkedin.get("candidateUrls"), list) else [],
         "candidates": linkedin.get("candidates") if isinstance(linkedin.get("candidates"), list) else [],
@@ -673,6 +684,9 @@ def put_workspace(bookmarks: list, leads: list, linkedin: dict) -> None:
         "leads": _workspace_leads(leads),
         "linkedin": _workspace_linkedin(linkedin),
     }
+    incoming = [str(x).strip() for x in (bookmarks or []) if str(x).strip()]
+    for k in incoming:
+        add_bookmark(k)
     client = _sb()
     if client is None:
         WORKSPACE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -680,6 +694,7 @@ def put_workspace(bookmarks: list, leads: list, linkedin: dict) -> None:
         disk = existing if isinstance(existing, dict) else {}
         disk["leads"] = payload["leads"]
         disk["linkedin"] = payload["linkedin"]
+        disk["bookmarks"] = list(dict.fromkeys((disk.get("bookmarks") if isinstance(disk.get("bookmarks"), list) else []) + incoming))
         _write_json(WORKSPACE_PATH, disk)
         return
     try:
@@ -693,3 +708,152 @@ def put_workspace(bookmarks: list, leads: list, linkedin: dict) -> None:
         ).execute()
     except Exception:
         pass
+
+
+def person_key(linkedin_url: str = "", name: str = "", company: str = "") -> str:
+    url = str(linkedin_url or "").split("?")[0].rstrip("/").lower()
+    if "/in/" in url:
+        return _safe_key(url)
+    blob = f"{(name or '').strip()} {(company or '').strip()}".strip()
+    return company_key(blob) if blob else "unknown"
+
+
+def _person_path(key: str) -> Path:
+    PEOPLE_DIR.mkdir(parents=True, exist_ok=True)
+    return PEOPLE_DIR / f"{_safe_key(key)}.json"
+
+
+def get_person(key: str) -> dict[str, Any] | None:
+    k = str(key or "").strip()
+    if not k:
+        return None
+    client = _sb()
+    if client is not None:
+        try:
+            res = client.table("people").select("*").eq("key", k).limit(1).execute()
+            rows = res.data or []
+            if rows and isinstance(rows[0], dict):
+                return rows[0]
+        except Exception:
+            pass
+    data = _read_json(_person_path(k))
+    return data if isinstance(data, dict) else None
+
+
+def _contact_entry_key(value: str, kind: str) -> str:
+    text = str(value or "").strip()
+    if kind == "phone":
+        return re.sub(r"\D", "", text)
+    return text.lower()
+
+
+def _as_contact_entries(items: Any, kind: str, *, allow_company_phone: bool = False) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items or []:
+        value = str(item.get("value") or "").strip().rstrip("\\") if isinstance(item, dict) else str(item or "").strip().rstrip("\\")
+        if isinstance(item, dict):
+            src = str(item.get("source") or "").strip().lower()
+        else:
+            src = "saved"
+        if src in ("guessed", "guess"):
+            continue
+        if kind == "phone" and src == "company_site" and not allow_company_phone:
+            continue
+        if kind == "phone":
+            if value.count(".") > 1 or re.search(r"[A-Za-z]", value):
+                continue
+            digits = re.sub(r"\D", "", value)
+            if len(digits) < 10 or len(digits) > 15:
+                continue
+        key = _contact_entry_key(value, kind)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({"value": value, "source": src or "saved"})
+    return out
+
+
+def _merge_contact_entries(prev: Any, incoming: Any, kind: str, *, allow_company_phone: bool = False) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in _as_contact_entries(incoming, kind, allow_company_phone=allow_company_phone) + _as_contact_entries(
+        prev, kind, allow_company_phone=allow_company_phone
+    ):
+        key = _contact_entry_key(item.get("value") or "", kind)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
+    key = person_key(
+        record.get("linkedin_url") or record.get("linkedin_profile_url") or record.get("url") or "",
+        record.get("name") or "",
+        record.get("company") or record.get("current_company") or "",
+    )
+    prev = get_person(key) or {}
+    prev_profile = prev.get("profile") if isinstance(prev.get("profile"), dict) else {}
+    new_profile = record.get("profile") if isinstance(record.get("profile"), dict) else {}
+    prev_emails = prev_profile.get("email_entries") or prev.get("emails") or []
+    prev_phones = prev_profile.get("phone_entries") or prev.get("phones") or []
+    email_entries = _merge_contact_entries(
+        prev_emails,
+        new_profile.get("email_entries") or record.get("emails") or [],
+        "email",
+    )
+    phone_entries = _merge_contact_entries(
+        prev_phones,
+        new_profile.get("phone_entries") or record.get("phones") or [],
+        "phone",
+    )
+    company_email_entries = _merge_contact_entries(
+        prev_profile.get("company_email_entries") or [],
+        new_profile.get("company_email_entries") or record.get("company_emails") or [],
+        "email",
+    )
+    company_phone_entries = _merge_contact_entries(
+        prev_profile.get("company_phone_entries") or [],
+        new_profile.get("company_phone_entries") or record.get("company_phones") or [],
+        "phone",
+        allow_company_phone=True,
+    )
+    emails = [item["value"] for item in email_entries]
+    phones = [item["value"] for item in phone_entries]
+    sources = list(dict.fromkeys(item["source"] for item in email_entries + phone_entries if item.get("source")))
+    email = str(record.get("email") or prev.get("email") or (emails[0] if emails else "") or "").strip().rstrip("\\") or None
+    phone = str(record.get("phone") or prev.get("phone") or (phones[0] if phones else "") or "").strip().rstrip("\\") or None
+    if phone and (phone.count(".") > 1 or re.search(r"[A-Za-z]", phone) or not (10 <= len(re.sub(r"\D", "", phone)) <= 15)):
+        phone = phones[0] if phones else None
+    profile = dict(prev_profile)
+    profile.update(new_profile)
+    profile.pop("guessed_emails", None)
+    profile["email_entries"] = email_entries
+    profile["phone_entries"] = phone_entries
+    profile["company_email_entries"] = company_email_entries
+    profile["company_phone_entries"] = company_phone_entries
+    payload = {
+        "key": key,
+        "linkedin_url": str(record.get("linkedin_url") or record.get("linkedin_profile_url") or prev.get("linkedin_url") or "").strip() or None,
+        "name": str(record.get("name") or prev.get("name") or "").strip() or None,
+        "company": str(record.get("company") or record.get("current_company") or prev.get("company") or "").strip() or None,
+        "email": email,
+        "phone": phone,
+        "emails": _jsonable(emails),
+        "phones": _jsonable(phones),
+        "sources": _jsonable(sources),
+        "profile": _jsonable(profile),
+        "updated_at": _now_iso(),
+    }
+    client = _sb()
+    if client is None:
+        _write_json(_person_path(key), payload)
+        return payload
+    try:
+        client.table("people").upsert(payload).execute()
+    except Exception:
+        _write_json(_person_path(key), payload)
+    return payload
+

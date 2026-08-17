@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 
 load_dotenv(SECRETS / ".env")
 
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 app = Flask(__name__)
 
@@ -29,6 +29,7 @@ FRONT_DIR = ROOT / "front"
 @app.route("/lead")
 @app.route("/company")
 @app.route("/linkedin")
+@app.route("/people")
 @app.route("/dashboard")
 def index():
     return send_from_directory(str(FRONT_DIR), "index.html")
@@ -48,11 +49,56 @@ def _json_error(message: str, status: int = 400):
     return jsonify({"ok": False, "error": message}), status
 
 
+def _friendly_cli_error(stderr: str, stdout: str, fallback: str) -> str:
+    blob = "\n".join(part for part in (stderr, stdout) if part).strip()
+    low = blob.lower()
+    if any(
+        token in low
+        for token in (
+            "navigating to",
+            "waiting until",
+            "timeout",
+            "exceeded",
+            "net::err",
+        )
+    ):
+        return "LinkedIn took too long to load. Try again."
+    if "target closed" in low or "browser has been closed" in low:
+        return "The LinkedIn browser closed before search finished. Try again."
+    if "auth" in low and ("required" in low or "checkpoint" in low or "login" in low):
+        return "LinkedIn needs a login. Sign in with the saved session and try again."
+    for line in reversed(blob.splitlines()):
+        text = line.strip()
+        if not text:
+            continue
+        if text.startswith("=") or text.startswith("- ") or text.startswith("File "):
+            continue
+        if text.lower().startswith("traceback") or "waiting until" in text.lower():
+            continue
+        if "navigating to" in text.lower():
+            continue
+        if len(text) > 8:
+            return text[:280]
+    return fallback
+
+
 def _last_json_line(stdout: str):
     lines = [ln for ln in (stdout or "").splitlines() if ln.strip()]
     if not lines:
         return None
     return json.loads(lines[-1])
+
+
+def _people_hints(data: dict | None) -> dict:
+    src = data if isinstance(data, dict) else {}
+    nested = src.get("hints") if isinstance(src.get("hints"), dict) else {}
+    out = {}
+    for key in ("name", "company", "role", "title", "location", "email", "phone"):
+        val = str(nested.get(key) or src.get(key) or "").strip()
+        if not val:
+            continue
+        out["role" if key == "title" else key] = val
+    return out
 
 
 def _kill_process_tree(proc: subprocess.Popen | None) -> None:
@@ -95,6 +141,14 @@ try:
         urls = []
 except Exception:
     urls = [u.strip() for u in raw.replace(",", "\\n").splitlines() if u.strip()]
+hints = {{}}
+if len(sys.argv) > 2:
+    try:
+        parsed_hints = json.loads(sys.argv[2])
+        if isinstance(parsed_hints, dict):
+            hints = parsed_hints
+    except Exception:
+        hints = {{}}
 if not urls:
     print("[]")
     raise SystemExit(0)
@@ -105,7 +159,7 @@ settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
 settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
 def _emit(obj):
     print(json.dumps(obj, default=str), flush=True)
-rows = run(settings, on_progress=_emit, urls=urls)
+rows = run(settings, on_progress=_emit, urls=urls, hints=hints)
 print(json.dumps(rows or [], default=str), flush=True)
 """
 
@@ -151,8 +205,30 @@ from src.linkedin_search import search_people_urls
 name = sys.argv[1]
 company = sys.argv[2] if len(sys.argv) > 2 else ""
 max_profiles = int(sys.argv[3]) if len(sys.argv) > 3 else 5
-found = search_people_urls(name, company, max_profiles=max_profiles, headless=True)
-print(json.dumps(found or [], default=str))
+title = sys.argv[4] if len(sys.argv) > 4 else ""
+location = sys.argv[5] if len(sys.argv) > 5 else ""
+def _emit(obj):
+    print(json.dumps(obj, default=str), flush=True)
+try:
+    found = search_people_urls(name, company, title=title, location=location, max_profiles=max_profiles, headless=True, on_progress=_emit)
+    urls = [c.get("url") for c in (found or []) if isinstance(c, dict) and c.get("url")]
+    _emit({{"done": True, "ok": True, "candidates": found or [], "candidate_urls": urls}})
+except Exception as exc:
+    _emit({{"done": True, "error": str(exc)}})
+    raise SystemExit(1)
+"""
+
+_LI_ENRICH = """
+import json, sys
+sys.path.insert(0, r"{li_root}")
+from src.contacts import enrich_profile
+row = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {{}}
+hints = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {{}}
+if not isinstance(row, dict):
+    row = {{}}
+if not isinstance(hints, dict):
+    hints = {{}}
+print(json.dumps(enrich_profile(row, hints=hints), default=str))
 """
 
 _LEAD_SAMPLES = """
@@ -314,6 +390,8 @@ _lead_investigation_lock = threading.Lock()
 _lead_investigation_proc: subprocess.Popen | None = None
 _linkedin_scrape_lock = threading.Lock()
 _linkedin_scrape_proc: subprocess.Popen | None = None
+_linkedin_search_lock = threading.Lock()
+_linkedin_search_proc: subprocess.Popen | None = None
 
 
 @app.post("/api/lead/investigate/stop")
@@ -496,22 +574,22 @@ def api_linkedin():
         urls = [url] if url else []
     urls = urls[:5]
     if not urls:
-        return _json_error("Enter a LinkedIn profile URL")
+        return _json_error("Enter a profile URL")
+    hints = _people_hints(data)
     try:
         script = _LI_RUNNER.format(
-            li_root=str(ROOT / "linkedin scrape").replace("\\", "\\\\")
+            li_root=str(ROOT / "lead scraper").replace("\\", "\\\\")
         )
         proc = subprocess.run(
-            [str(VENV_PYTHON), "-c", script, json.dumps(urls)],
+            [str(VENV_PYTHON), "-c", script, json.dumps(urls), json.dumps(hints)],
             capture_output=True,
             text=True,
             timeout=min(300, 90 * max(1, len(urls))),
-            cwd=str(ROOT / "linkedin scrape"),
+            cwd=str(ROOT / "lead scraper"),
             env={**os.environ, "HEADLESS": "true"},
         )
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "").strip()
-            return _json_error(err.splitlines()[-1] if err else "Scraper failed")
+            return _json_error(_friendly_cli_error(proc.stderr, proc.stdout, "Scraper failed"))
         payload = _last_json_line(proc.stdout)
         if isinstance(payload, list):
             profiles = payload
@@ -530,13 +608,26 @@ def api_linkedin():
         return _json_error(str(exc))
 
 
-@app.get("/api/linkedin/stream")
+@app.route("/api/linkedin/stream", methods=["GET", "POST"])
 def api_linkedin_stream():
-    raw = request.args.get("urls") or "[]"
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        parsed = []
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        parsed = data.get("urls")
+        hints = _people_hints(data)
+        raw = json.dumps(parsed) if parsed is not None else "[]"
+    else:
+        raw = request.args.get("urls") or "[]"
+        hints = {}
+        try:
+            parsed_hints = json.loads(request.args.get("hints") or "{}")
+            if isinstance(parsed_hints, dict):
+                hints = _people_hints(parsed_hints)
+        except Exception:
+            hints = {}
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = []
     if isinstance(parsed, list):
         urls = [str(u).strip() for u in parsed if str(u).strip()]
     elif isinstance(parsed, str) and parsed.strip():
@@ -545,27 +636,29 @@ def api_linkedin_stream():
         urls = []
     urls = urls[:5]
     if not urls:
-        return _json_error("Enter a LinkedIn profile URL")
+        return _json_error("Enter a profile URL")
 
     script = _LI_RUNNER.format(
-        li_root=str(ROOT / "linkedin scrape").replace("\\", "\\\\")
+        li_root=str(ROOT / "lead scraper").replace("\\", "\\\\")
     )
     global _linkedin_scrape_proc
     with _linkedin_scrape_lock:
         if _linkedin_scrape_proc is not None and _linkedin_scrape_proc.poll() is None:
             _kill_process_tree(_linkedin_scrape_proc)
         proc = subprocess.Popen(
-            [str(VENV_PYTHON), "-c", script, json.dumps(urls)],
+            [str(VENV_PYTHON), "-c", script, json.dumps(urls), json.dumps(hints)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=str(ROOT / "linkedin scrape"),
+            cwd=str(ROOT / "lead scraper"),
             env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
         )
         _linkedin_scrape_proc = proc
 
     def generate():
+        sent_done = False
         try:
+            yield "retry: 3600000\n\n"
             assert proc.stdout is not None
             for line in proc.stdout:
                 text = line.strip()
@@ -576,16 +669,25 @@ def api_linkedin_stream():
                 except Exception:
                     continue
                 if isinstance(msg, list):
+                    sent_done = True
                     yield f"data: {json.dumps({'done': True, 'ok': True, 'profiles': msg}, default=str)}\n\n"
                 elif isinstance(msg, dict):
+                    if msg.get("done"):
+                        sent_done = True
                     yield f"data: {json.dumps(msg, default=str)}\n\n"
             code = proc.wait(timeout=5)
-            if code not in (0, None):
-                err = (proc.stderr.read() if proc.stderr else "") or "LinkedIn scraper failed"
-                yield f"data: {json.dumps({'done': True, 'error': err.strip().splitlines()[-1] if err.strip() else 'LinkedIn scraper failed'})}\n\n"
+            if not sent_done:
+                sent_done = True
+                if code not in (0, None):
+                    err = (proc.stderr.read() if proc.stderr else "") or "People lookup failed"
+                    yield f"data: {json.dumps({'done': True, 'error': err.strip().splitlines()[-1] if err.strip() else 'People lookup failed'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'done': True, 'ok': True})}\n\n"
         except Exception as exc:
             _kill_process_tree(proc)
-            yield f"data: {json.dumps({'done': True, 'error': str(exc)})}\n\n"
+            if not sent_done:
+                sent_done = True
+                yield f"data: {json.dumps({'done': True, 'error': str(exc)})}\n\n"
         finally:
             if proc.poll() is None:
                 _kill_process_tree(proc)
@@ -593,9 +695,10 @@ def api_linkedin_stream():
                 if _linkedin_scrape_proc is proc:
                     _linkedin_scrape_proc = None
 
-    return Response(generate(), mimetype="text/event-stream", headers={
+    return Response(stream_with_context(generate()), mimetype="text/event-stream", headers={
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
     })
 
 
@@ -610,18 +713,37 @@ def api_linkedin_scrape_stop():
     return jsonify({"ok": True})
 
 
+@app.post("/api/linkedin/search/stop")
+def api_linkedin_search_stop():
+    global _linkedin_search_proc
+    with _linkedin_search_lock:
+        if _linkedin_search_proc is None or _linkedin_search_proc.poll() is not None:
+            return jsonify({"ok": True})
+        _kill_process_tree(_linkedin_search_proc)
+        _linkedin_search_proc = None
+    return jsonify({"ok": True})
+
+
 @app.post("/api/linkedin/search")
 def api_linkedin_search():
+    global _linkedin_search_proc
     data = request.get_json(silent=True) or {}
     name = str(data.get("name") or data.get("query") or "").strip()
     company = str(data.get("company") or "").strip()
+    title = str(data.get("title") or data.get("role") or "").strip()
+    location = str(data.get("location") or "").strip()
+    email = str(data.get("email") or "").strip()
     max_profiles = int(data.get("max_profiles") or 5)
     if not name:
-        return _json_error("Enter a name or LinkedIn URL")
-    try:
-        script = _LI_SEARCH.format(
-            lf_root=str(LEAD_FINDER_DIR).replace("\\", "\\\\")
-        )
+        name = email
+    if not name:
+        return _json_error("Enter a name, email, or profile URL")
+    script = _LI_SEARCH.format(
+        lf_root=str(LEAD_FINDER_DIR).replace("\\", "\\\\")
+    )
+    with _linkedin_search_lock:
+        if _linkedin_search_proc is not None and _linkedin_search_proc.poll() is None:
+            _kill_process_tree(_linkedin_search_proc)
         proc = subprocess.Popen(
             [
                 str(VENV_PYTHON),
@@ -630,29 +752,102 @@ def api_linkedin_search():
                 name,
                 company,
                 str(max(1, min(max_profiles, 10))),
+                title,
+                location,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
             cwd=str(LEAD_FINDER_DIR),
-            env={**os.environ, "HEADLESS": "true"},
+            env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
         )
+        _linkedin_search_proc = proc
+
+    def generate():
+        sent_done = False
         try:
-            stdout, stderr = proc.communicate(timeout=180)
-        except subprocess.TimeoutExpired:
+            yield "retry: 3600000\n\n"
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                text = line.strip()
+                if not text:
+                    continue
+                try:
+                    msg = json.loads(text)
+                except Exception:
+                    continue
+                if isinstance(msg, dict):
+                    if msg.get("done"):
+                        sent_done = True
+                    yield f"data: {json.dumps(msg, default=str)}\n\n"
+            code = proc.wait(timeout=5)
+            if not sent_done:
+                sent_done = True
+                with _linkedin_search_lock:
+                    cancelled = _linkedin_search_proc is None
+                if cancelled:
+                    yield f"data: {json.dumps({'done': True, 'ok': True, 'cancelled': True, 'candidates': []})}\n\n"
+                elif code not in (0, None):
+                    err = (proc.stderr.read() if proc.stderr else "") or ""
+                    yield f"data: {json.dumps({'done': True, 'error': _friendly_cli_error(err, '', 'LinkedIn search failed')})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'done': True, 'ok': True, 'candidates': []})}\n\n"
+        except Exception as exc:
             _kill_process_tree(proc)
-            return _json_error("LinkedIn search timed out. LinkedIn may be slow or asking for a login checkpoint.", 504)
+            if not sent_done:
+                yield f"data: {json.dumps({'done': True, 'error': str(exc)})}\n\n"
+        finally:
+            if proc.poll() is None:
+                _kill_process_tree(proc)
+            with _linkedin_search_lock:
+                if _linkedin_search_proc is proc:
+                    _linkedin_search_proc = None
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
+
+@app.post("/api/people/enrich")
+def api_people_enrich():
+    data = request.get_json(silent=True) or {}
+    hints = _people_hints(data)
+    if not any(hints.get(k) for k in ("name", "email", "company", "phone")):
+        return _json_error("Enter a name, email, company, or phone")
+    row = {
+        "name": hints.get("name") or None,
+        "current_company": hints.get("company") or None,
+        "current_role": hints.get("role") or None,
+        "location": hints.get("location") or None,
+        "email": hints.get("email") or None,
+        "phone": hints.get("phone") or None,
+        "url": "",
+        "linkedin_profile_url": "",
+        "links": [],
+        "error": None,
+    }
+    try:
+        script = _LI_ENRICH.format(
+            li_root=str(ROOT / "lead scraper").replace("\\", "\\\\")
+        )
+        proc = subprocess.run(
+            [str(VENV_PYTHON), "-c", script, json.dumps(row), json.dumps(hints)],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            cwd=str(ROOT / "lead scraper"),
+            env={**os.environ},
+        )
         if proc.returncode != 0:
-            err = (stderr or stdout or "").strip()
-            return _json_error(err.splitlines()[-1] if err else "LinkedIn search failed")
-        payload = _last_json_line(stdout)
-        candidates = payload if isinstance(payload, list) else []
-        urls = [c.get("url") for c in candidates if isinstance(c, dict) and c.get("url")]
-        return jsonify({
-            "ok": True,
-            "candidates": candidates,
-            "candidate_urls": urls,
-        })
+            return _json_error(_friendly_cli_error(proc.stderr, proc.stdout, "Contact lookup failed"))
+        payload = _last_json_line(proc.stdout)
+        profile = payload if isinstance(payload, dict) else row
+        return jsonify({"ok": True, "profile": profile})
+    except subprocess.TimeoutExpired:
+        return _json_error("Contact lookup timed out", 504)
     except Exception as exc:
         return _json_error(str(exc))
 

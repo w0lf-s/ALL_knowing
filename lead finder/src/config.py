@@ -10,7 +10,7 @@ LAST_RUN_JSON = OUTPUT_DIR / "last_run.json"
 CANDIDATE_URLS_PATH = OUTPUT_DIR / "candidate_urls.txt"
 VENV_PYTHON = SECRETS_DIR / ".venv" / "Scripts" / "python.exe"
 WEB_SCRAPER_DIR = REPO_ROOT / "web scraper"
-LINKEDIN_SCRAPE_DIR = REPO_ROOT / "linkedin scrape"
+LEAD_SCRAPER_DIR = REPO_ROOT / "lead scraper"
 
 
 def ensure_dirs() -> None:

@@ -10,6 +10,7 @@ from src.config import (
     get_settings,
 )
 from src.extract import extract_profile
+from src.contacts import enrich_profile
 
 
 def load_urls(path: Path = URLS_PATH) -> list[str]:
@@ -28,8 +29,10 @@ def run(
     settings: Settings | None = None,
     on_progress=None,
     urls: list[str] | None = None,
+    hints: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     settings = settings or get_settings()
+    hints = hints if isinstance(hints, dict) else {}
     urls = [str(u).strip() for u in (urls or load_urls()) if str(u).strip()]
     if not urls:
         raise RuntimeError("No profile URLs provided")
@@ -48,11 +51,20 @@ def run(
             if on_progress:
                 on_progress({
                     "pct": int((index / max(total, 1)) * 100),
-                    "step": f"Scraping profile {index + 1} of {total}",
+                    "step": f"Looking up profile {index + 1} of {total}",
                     "index": index + 1,
                     "total": total,
                 })
             row = extract_profile(page, url)
+            if row.get("error") != "auth_required":
+                if on_progress:
+                    on_progress({
+                        "pct": int((index / max(total, 1)) * 100),
+                        "step": f"Checking public contact pages {index + 1} of {total}",
+                        "index": index + 1,
+                        "total": total,
+                    })
+                row = enrich_profile(row, hints=hints)
             results.append(row)
             if on_progress:
                 on_progress({

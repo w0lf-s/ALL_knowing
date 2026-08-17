@@ -1,0 +1,145 @@
+html, body {
+    height: 100%;
+    min-width: 0;
+}
+
+body {
+    overflow-y: auto;
+}
+
+.layout {
+    max-width: none;
+    padding: 1rem 0.85rem 1.5rem;
+}
+
+header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.85rem;
+}
+
+.logo h1 {
+    font-size: 1.12rem;
+}
+
+.logo p {
+    font-size: 0.78rem;
+}
+
+.logo-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 0.95rem;
+}
+
+nav.tabs {
+    margin-bottom: 1rem;
+    gap: 0;
+    overflow-x: auto;
+}
+
+nav.tabs button {
+    padding: 0.65rem 0.7rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.search-box {
+    padding: 1rem;
+}
+
+.search-box .form-row {
+    flex-wrap: wrap;
+}
+
+.search-box .form-row input[type="text"] {
+    min-width: 0;
+    width: 100%;
+    flex: 1 1 100%;
+}
+
+.search-box .form-row button,
+.people-submit button {
+    width: 100%;
+    justify-content: center;
+}
+
+.people-fields {
+    grid-template-columns: 1fr;
+}
+
+.people-fields .span-2 {
+    grid-column: auto;
+}
+
+.card {
+    overflow: visible;
+}
+
+.card table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+}
+
+.card-header {
+    flex-wrap: wrap;
+}
+
+table {
+    width: 100%;
+}
+
+.overlay {
+    align-items: flex-start;
+    padding: 0.6rem;
+}
+
+.modal {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    max-height: calc(100vh - 1.2rem);
+    overflow: auto;
+}
+
+.modal-grid {
+    grid-template-columns: 1fr;
+}
+
+.metric-row {
+    grid-template-columns: 6.2rem minmax(0, 1fr);
+}
+
+.people-match-banner {
+    display: flex;
+    width: 100%;
+    aspect-ratio: 4 / 1;
+    min-height: 72px;
+    height: auto;
+}
+
+.people-match-banner-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.people-match-body-visual {
+    display: flex;
+    position: relative;
+    z-index: 2;
+    overflow: visible;
+}
+
+.people-match-body {
+    flex-wrap: wrap;
+}
+
+.people-match-actions {
+    width: 100%;
+}
+
+.people-match-actions .btn {
+    width: 100%;
+    justify-content: center;
+}

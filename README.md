@@ -1,6 +1,6 @@
 # Zuntra Lead Intelligence
 
-**AI-powered company analysis for lead investigation, market dossiers, and LinkedIn lookup.**
+**AI-powered company analysis for lead investigation, market dossiers, and people lookup.**
 
 A dark-mode web app that turns an email, company name, or LinkedIn search into a structured intelligence dossier — identity, financials, filings, news, and profiles — then stores it in Supabase so the dashboard stays in sync.
 
@@ -27,7 +27,7 @@ A dark-mode web app that turns an email, company name, or LinkedIn search into a
 
 ![Company Search](assets/company-search.png)
 
-### LinkedIn Lookup — people search, candidate list, scrape one or all, stop mid-run
+### People Lookup — person search, matches, look up one or all, stop mid-run
 
 ![LinkedIn Lookup](assets/linkedin-lookup.png)
 
@@ -40,7 +40,7 @@ A dark-mode web app that turns an email, company name, or LinkedIn search into a
 | Dashboard | Companies tracked, bookmarks, search by name or industry |
 | Lead investigation | Email → company dossier + LinkedIn action; news on demand |
 | Company Search | Identity, financials, filings, and news in one pipeline |
-| LinkedIn Lookup | Name/company search, candidate table, scrape profiles |
+| People Lookup | Name, company, role, location, email, phone, or profile URL; role, company, and contact with sources |
 | Progress + stop | Live progress bars; stop investigation or scrape without losing what already landed |
 | Bookmarks | Pin companies; bookmarked cards surface first on the dashboard |
 | Persistence | Dossiers, cache, news, workspace, and bookmarks in Supabase |
@@ -77,7 +77,7 @@ The SPA talks only to Flask. Flask is the only client of Supabase.
 ├── ui/                     # Flask app and API
 ├── web scraper/            # Company intelligence pipeline
 ├── lead finder/            # Email → company orchestration
-├── linkedin scrape/        # Playwright profile extraction
+├── lead scraper/           # Playwright profile extraction + public contact pass
 ├── supabase/schema.sql     # Tables + RLS policies
 ├── requirements.txt
 └── not to share/           # gitignored: .env, venv, cookies, LinkedIn session
@@ -134,7 +134,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 | `LINKEDIN_EMAIL` / `LINKEDIN_PASSWORD` | Profile scrape session |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Dossiers, cache, workspace, bookmarks |
 
-Apply [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor so `companies`, `source_cache`, `news_days`, `workspace`, and `bookmarks` exist.
+Apply [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor so `companies`, `source_cache`, `news_days`, `workspace`, `bookmarks`, and `people` exist.
 
 ---
 
@@ -152,7 +152,7 @@ Open [http://127.0.0.1:5000](http://127.0.0.1:5000)
 | Dashboard | Browse tracked companies, search, open a card, bookmark |
 | Lead | Add an email → **Investigate** → **View** → **Look up news** if you want articles |
 | Company Search | Name or ticker → full dossier including news |
-| LinkedIn Lookup | Name + optional company → **Scrape profiles** or scrape one row; **Stop** cancels |
+| People Lookup | Name, company, role, location, email, phone, or profile URL → **Look up people**; **Stop** cancels |
 
 Ctrl+C in the terminal stops the server.
 

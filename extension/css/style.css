@@ -1040,25 +1040,13 @@ table.filings-table td:nth-child(4) {
     align-items: flex-start;
 }
 
-.people-match-body-shot-only {
-    padding: 0.85rem 1rem 0.95rem;
-}
-
 .people-match-info-visual {
     padding-top: 0.55rem;
-}
-
-.people-match-info-shot {
-    padding-top: 0.4rem;
 }
 
 .people-profile-card {
     padding: 0;
     overflow: hidden;
-}
-
-.people-profile-card .people-match-shot {
-    border-radius: 0;
 }
 
 .people-profile-main {

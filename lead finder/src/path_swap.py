@@ -4,13 +4,13 @@ import sys
 from contextlib import contextmanager
 from typing import Iterator
 
-from src.config import LINKEDIN_SCRAPE_DIR, ROOT
+from src.config import LEAD_SCRAPER_DIR, ROOT
 
 
 @contextmanager
 def linkedin_src_path() -> Iterator[None]:
     lead_src = str(ROOT)
-    li_root = str(LINKEDIN_SCRAPE_DIR)
+    li_root = str(LEAD_SCRAPER_DIR)
     removed: list[tuple[int, str]] = []
     for i, entry in list(enumerate(sys.path)):
         if entry == lead_src or entry.rstrip("\\/") == str(ROOT).rstrip("\\/"):

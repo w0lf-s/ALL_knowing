@@ -8,7 +8,7 @@ venv/
 web scraper/output/
 web scraper/lastrun.json
 web scraper/assets/
-linkedin scrape/storage/
-linkedin scrape/output/
-linkedin scrape/urls.txt
+lead scraper/storage/
+lead scraper/output/
+lead scraper/urls.txt
 debug-*.log

@@ -14,6 +14,11 @@ def _value(raw: Any) -> str:
         parts: list[str] = []
         for item in raw:
             if isinstance(item, dict):
+                if item.get("value"):
+                    value = str(item.get("value") or "").replace("\n", " ").strip()
+                    source = str(item.get("source") or "").replace("\n", " ").strip()
+                    parts.append(f"{value} ({source})" if source else value)
+                    continue
                 title = str(item.get("title") or "").replace("\n", " ").strip()
                 url = str(item.get("url") or "").replace("\n", " ").strip()
                 if title and url and title != url:
@@ -63,6 +68,16 @@ def _row_lines(index: int, row: dict[str, Any]) -> list[str]:
         ("About", _value(row.get("about"))),
         ("Error", _value(row.get("error"))),
     ]
+    extra = [
+        ("Emails", row.get("email_entries") or [x for x in (row.get("emails") or []) if x and x != row.get("email")]),
+        ("Phones", row.get("phone_entries") or [x for x in (row.get("phones") or []) if x and x != row.get("phone")]),
+        ("Company emails", row.get("company_email_entries") or row.get("company_emails")),
+        ("Company phones", row.get("company_phone_entries") or row.get("company_phones")),
+    ]
+    for label, raw in extra:
+        text = _value(raw)
+        if text != "-":
+            fields.insert(-3, (label, text))
     label_width = max(len(label) for label, _ in fields)
     lines = ["-" * 72, f" Profile {index} ".center(72, "-")]
     for label, value in fields:
@@ -95,7 +110,7 @@ def format_results(
     summary = summary if summary is not None else load_summary()
     lines: list[str] = []
     lines.append("=" * 72)
-    lines.append(" LinkedIn Scrape Results ".center(72, "="))
+    lines.append(" Lead scraper results ".center(72, "="))
     lines.append("=" * 72)
 
     if summary:

@@ -1,5 +1,23 @@
+const API_BASE = 'http://127.0.0.1:5000';
+const nativeFetch = globalThis.fetch.bind(globalThis);
+function apiUrl(path) {
+    const s = String(path || '');
+    if (/^https?:\/\//i.test(s)) return s;
+    return API_BASE + s;
+}
+globalThis.fetch = (input, init) => {
+    if (typeof input === 'string') return nativeFetch(apiUrl(input), init);
+    return nativeFetch(input, init);
+};
+const NativeEventSource = globalThis.EventSource;
+globalThis.EventSource = class extends NativeEventSource {
+    constructor(url, config) {
+        super(apiUrl(url), config);
+    }
+};
+
 const state = {
-    tab: 'dashboard',
+    tab: 'lead',
     leads: [],
     company: { query: '', dossier: null, searching: false, progressPct: 0, progressStep: '' },
     linkedin: { name: '', company: '', role: '', location: '', email: '', phone: '', url: '', profiles: [], candidateUrls: [], candidates: [], searching: false, searched: false, matchesOpen: true, progressPct: 0, progressStep: '' },
@@ -74,7 +92,6 @@ function fmtNum(n, digits) {
 function showError(el, msg) {
     el.innerHTML = msg ? `<div class="error">${esc(msg)}</div>` : '';
 }
-
 function peopleSearchError(msg) {
     const raw = String(msg || '');
     const low = raw.toLowerCase();
@@ -282,6 +299,8 @@ function applyPeopleSearchProgress(pct, text) {
 }
 
 function switchTab(tab) {
+    if (tab === 'dashboard') tab = 'lead';
+    if (tab === 'linkedin') tab = 'people';
     state.tab = tab;
     document.querySelectorAll('nav.tabs button').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -300,7 +319,9 @@ function switchTab(tab) {
         if ($('people-progress')) $('people-progress').style.display = 'none';
         if ($('people-progress-fill')) $('people-progress-fill').style.width = '0%';
     }
-    history.replaceState(null, '', `#${tab}`);
+    try {
+        history.replaceState(null, '', `#${tab}`);
+    } catch (_) {}
     saveState();
     renderAll();
     if (state.company.searching && tab === 'company') syncCompanySearchUi();
@@ -520,6 +541,7 @@ function dashboardCardHtml(c) {
 function renderDashboard() {
     const grid = $('grid');
     const empty = $('emptyState');
+    if (!grid || !empty) return;
     const q = (($('searchInput') && $('searchInput').value) || '').toLowerCase().trim();
     let list = dashboardCompanies();
     if (q) {
@@ -988,7 +1010,7 @@ function candidateVisualForUrl(url) {
 
 function profileVisual(p) {
     const own = peopleVisualFields(p);
-    if (own.photo || own.banner || own.shot) return own;
+    if (own.photo || own.banner) return own;
     return candidateVisualForUrl(p.linkedin_profile_url || p.url);
 }
 
@@ -1005,17 +1027,15 @@ function renderMatchPreview(item, index, profiles, cands, allowScrape, scraping)
         ? `<div class="people-match-cos">${companies.map(c => `<span class="people-match-co">${esc(c)}</span>`).join('')}</div>`
         : '';
     const visual = renderPeopleVisual(name, item);
-    const hasBannerPhoto = !!(peopleVisualFields(item).photo || peopleVisualFields(item).banner);
-    const infoPad = hasBannerPhoto ? ' people-match-info-visual' : (peopleVisualFields(item).shot ? ' people-match-info-shot' : ' people-match-info-visual');
     return `<article class="people-match">
         ${visual}
-        <div class="people-match-body${hasBannerPhoto ? ' people-match-body-details' : ' people-match-body-shot-only'}">
-            <div class="people-match-info${infoPad}">
+        <div class="people-match-body people-match-body-details">
+            <div class="people-match-info people-match-info-visual">
                 <h4>${esc(name)}</h4>
                 ${headline ? `<p class="people-match-headline">${esc(headline)}</p>` : ''}
                 ${location ? `<p class="people-match-location">${esc(location)}</p>` : ''}
                 ${coHtml}
-                ${!peopleVisualFields(item).shot || hasBannerPhoto ? `<a class="link people-match-url" href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>` : ''}
+                <a class="link people-match-url" href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>
             </div>
             <div class="people-match-actions">${look}</div>
         </div>
@@ -1753,7 +1773,8 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 
-$('searchInput').addEventListener('input', filterCards);
+const searchInputEl = $('searchInput');
+if (searchInputEl) searchInputEl.addEventListener('input', filterCards);
 
 const analyzeBtnEl = $('analyzeBtn');
 if (analyzeBtnEl) {
@@ -2066,10 +2087,11 @@ $('people-form').addEventListener('submit', async (e) => {
 loadWorkspace().then(() => {
     if (!state.leads) state.leads = [];
     loadSampleLeads().then(() => {
-        const hash = (location.hash || '#dashboard').replace('#', '');
+        const hash = (location.hash || '#lead').replace('#', '');
         const mapped = hash === 'linkedin' ? 'people' : hash;
-        const valid = ['dashboard', 'lead', 'company', 'people'];
-        const initial = valid.includes(mapped) ? mapped : (state.tab === 'linkedin' ? 'people' : (state.tab || 'dashboard'));
+        const valid = ['lead', 'company', 'people'];
+        const saved = state.tab === 'linkedin' ? 'people' : (state.tab === 'dashboard' ? 'lead' : state.tab);
+        const initial = valid.includes(mapped) ? mapped : (valid.includes(saved) ? saved : 'lead');
         switchTab(initial);
     });
     loadReports().then(() => refreshBookmarkedCompanies());

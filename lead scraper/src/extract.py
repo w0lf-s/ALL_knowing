@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -40,6 +41,8 @@ def _blank_result(url: str) -> dict[str, Any]:
         "twitter": None,
         "linkedin_profile_url": url.split("?")[0],
         "other_channels": [],
+        "photo": None,
+        "banner": None,
         "error": None,
     }
 
@@ -952,10 +955,6 @@ def _page_looks_like_authwall(page: Page) -> bool:
     return any(marker in body for marker in markers)
 
 
-def _write_debug(page: Page, url: str, captured_count: int, data: dict[str, Any]) -> None:
-    return
-
-
 def _extract_dom_profile(page: Page, data: dict[str, Any]) -> None:
     _dismiss_noise(page)
     try:
@@ -1034,6 +1033,159 @@ def _extract_dom_profile(page: Page, data: dict[str, Any]) -> None:
         _merge_field(data, "current_role", role)
         _merge_field(data, "current_company", company)
 
+    _extract_profile_images(page, data)
+
+
+_IMAGE_URLS_JS = """() => {
+    const h1 = document.querySelector('main h1, h1.text-heading-xlarge, h1');
+    let top = document.querySelector('main');
+    if (h1) {
+        let n = h1.parentElement;
+        for (let i = 0; i < 14 && n; i++) {
+            if (n.querySelector && n.querySelector('.profile-background-image, .pv-top-card-profile-picture, img[src*="displaybackground"], img[src*="profile-displayphoto"]')) {
+                top = n;
+                break;
+            }
+            n = n.parentElement;
+        }
+    }
+    const skipImgUrl = (u) => !u || /^data:image\\/gif/i.test(u) || /ghost|sprite|emoji|static\\.licdn\\.com\\/aero/i.test(u);
+    const urlFromImg = (img) => {
+        if (!img) return '';
+        const delayed = img.getAttribute('data-delayed-url') || img.getAttribute('data-li-src') || '';
+        const srcset = img.getAttribute('srcset') || '';
+        let best = '';
+        let bestW = 0;
+        for (const part of srcset.split(',')) {
+            const bits = part.trim().split(/\\s+/);
+            const u = bits[0] || '';
+            const w = parseInt((bits[1] || '0').replace('w', ''), 10) || 0;
+            if (u && w >= bestW) { best = u; bestW = w; }
+        }
+        const src = img.currentSrc || img.getAttribute('src') || '';
+        for (const u of [delayed, best, src]) {
+            if (!skipImgUrl(u)) return u;
+        }
+        return '';
+    };
+    const pickPhoto = () => {
+        if (!top) return '';
+        for (const s of [
+            'img.pv-top-card-profile-picture__image',
+            'button.pv-top-card-profile-picture img',
+            '.pv-top-card-profile-picture img',
+            'img[src*="profile-displayphoto"]',
+            'img[srcset*="profile-displayphoto"]',
+        ]) {
+            const el = top.querySelector(s);
+            if (!el) continue;
+            const img = el.matches('img') ? el : el.querySelector('img');
+            const u = urlFromImg(img);
+            if (u) return u;
+        }
+        return '';
+    };
+    const good = /profile-displaybackground|displaybackground|profile-background/i;
+    let banner = '';
+    if (top) {
+        for (const img of top.querySelectorAll('.profile-background-image img, .pv-top-card__bg-container img, img')) {
+            const src = urlFromImg(img);
+            const set = img.getAttribute('srcset') || '';
+            if ((good.test(src) || good.test(set)) && !/profile-displayphoto/i.test(src)) { banner = src; break; }
+        }
+        if (!banner) {
+            for (const el of top.querySelectorAll('.profile-background-image, .pv-top-card__bg-container')) {
+                const bg = getComputedStyle(el).backgroundImage || '';
+                const m = bg.match(/url\\(["']?(.+?)["']?\\)/);
+                if (m && m[1] && good.test(m[1]) && !m[1].startsWith('data:')) { banner = m[1]; break; }
+            }
+        }
+    }
+    return { photo: pickPhoto(), banner };
+}"""
+
+_IMAGE_DATA_JS = """async (url) => {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    try {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return '';
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result || '');
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
+        });
+    } catch (_) {
+        return '';
+    }
+}"""
+
+
+def _url_to_data(page: Page, url: str) -> str | None:
+    src = str(url or "").strip()
+    if not src:
+        return None
+    if src.startswith("data:"):
+        return src
+    try:
+        resp = page.context.request.get(src, timeout=15000)
+        if resp.ok:
+            body = resp.body()
+            if body:
+                return "data:image/jpeg;base64," + base64.b64encode(body).decode("ascii")
+    except Exception:
+        pass
+    try:
+        result = page.evaluate(_IMAGE_DATA_JS, src)
+        cleaned = str(result or "").strip()
+        return cleaned or None
+    except Exception:
+        return None
+
+
+def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
+    try:
+        urls = page.evaluate(_IMAGE_URLS_JS) or {}
+    except Exception:
+        urls = {}
+    if isinstance(urls, dict):
+        photo = _url_to_data(page, str(urls.get("photo") or ""))
+        banner = _url_to_data(page, str(urls.get("banner") or ""))
+        if photo:
+            data["photo"] = photo
+        if banner:
+            data["banner"] = banner
+    if data.get("banner"):
+        return
+    h1 = page.locator("main h1").first
+    root = h1.locator("xpath=ancestor::*[.//*[contains(@class,'profile-background-image') or contains(@class,'pv-top-card-profile-picture')]][1]") if h1.count() else page.locator("main").first
+    for sel in (
+        "img.profile-background-image__image",
+        ".profile-background-image img",
+        "div.profile-background-image",
+        ".pv-top-card__bg-container img",
+        "img[src*='profile-displaybackground']",
+        "img[src*='displaybackground']",
+    ):
+        try:
+            loc = root.locator(sel).first
+            if loc.count() == 0:
+                continue
+            loc.scroll_into_view_if_needed(timeout=2500)
+            page.wait_for_timeout(400)
+            raw = loc.screenshot(type="jpeg", quality=58)
+            if raw:
+                data["banner"] = "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+                return
+        except Exception:
+            continue
+
+
+def _write_debug(page: Page, url: str, captured_count: int, data: dict[str, Any]) -> None:
+    return
+
 
 def extract_profile(page: Page, url: str) -> dict[str, Any]:
     data = _blank_result(url)
@@ -1075,6 +1227,9 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
             except Exception:
                 pass
             _extract_dom_profile(page, data)
+
+        if not data.get("photo") or not data.get("banner"):
+            _extract_profile_images(page, data)
 
         _extract_dom_contact(page, data, captured)
         if not data.get("links"):

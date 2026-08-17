@@ -10,6 +10,7 @@ NEWS_DIR = OUTPUT / "news"
 LASTRUN = PRIVATE_DIR / "lastrun.json"
 WORKSPACE_PATH = PRIVATE_DIR / "workspace.json"
 BOOKMARKS_PATH = PRIVATE_DIR / "bookmarks.json"
+PEOPLE_DIR = PRIVATE_DIR / "people"
 
 
 def company_key(query: str) -> str:
@@ -20,5 +21,5 @@ def company_key(query: str) -> str:
 
 
 def ensure_dirs() -> None:
-    for p in (OUTPUT, CACHE, RAW_DIR, COMPANY_DIR, NEWS_DIR):
+    for p in (OUTPUT, CACHE, RAW_DIR, COMPANY_DIR, NEWS_DIR, PEOPLE_DIR):
         p.mkdir(parents=True, exist_ok=True)

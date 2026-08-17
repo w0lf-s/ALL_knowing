@@ -7,7 +7,7 @@ from src.scraper import run
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="LinkedIn profile scraper")
+    parser = argparse.ArgumentParser(description="Lead scraper")
     parser.add_argument(
         "--view",
         action="store_true",
