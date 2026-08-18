@@ -35,6 +35,8 @@ _SKIP_LINES = {
     "more",
     "current:",
     "past:",
+    "connections",
+    "connection",
 }
 _DEGREE_LINE_RE = re.compile(r"^[•·\-–—]?\s*\d+(?:st|nd|rd|th)\+?\s*$", re.I)
 _UI_JUNK_LINE_RE = re.compile(
@@ -47,7 +49,15 @@ _EXTRACT_JS = """() => {
         const part = (href.split('/in/')[1] || '').split(/[/?#]/)[0];
         return (part || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
     };
-    const isMutual = (t) => /mutual connection|mutual connections| and \\d+ other/i.test(t || '');
+    const isMutual = (t) => {
+        const s = String(t || '').toLowerCase().replace(/\\s+/g, ' ').trim();
+        if (!s) return false;
+        if (/\\bmutual\\b/.test(s)) return true;
+        if (/(?:and|&)\\s*\\d+\\s+other/.test(s)) return true;
+        if (/^connections?$/.test(s)) return true;
+        if (/\\d+\\s+connections?\\b/.test(s)) return true;
+        return false;
+    };
     const isDegree = (t) => /^[•·\\-–—]?\\s*\\d+(?:st|nd|rd|th)\\+?\\s*$/i.test((t || '').trim());
     const isAction = (t) => /^(message|connect|follow|pending|view profile|view full profile|contact info)$/i.test((t || '').trim());
     const cleanName = (raw) => String(raw || '').replace(/\\s*[•·].*$/, '').replace(/\\s+\\d+(?:st|nd|rd|th)\\+?$/i, '').trim();
@@ -100,8 +110,7 @@ _EXTRACT_JS = """() => {
                 continue;
             }
             const low = ln.toLowerCase();
-            if (isDegree(ln) || isAction(low)) continue;
-            if (isMutual(ln)) continue;
+            if (isDegree(ln) || isAction(low) || isMutual(ln)) continue;
             if (personName && low === personName.toLowerCase()) continue;
             if (ln.includes('|') || /\\bat\\b/i.test(ln) || ln.length >= 12) return ln;
         }
@@ -170,16 +179,18 @@ _EXTRACT_JS = """() => {
         for (const s of ['.entity-result__primary-subtitle', '[class*="primary-subtitle"]', '.artdeco-entity-lockup__subtitle']) {
             const el = card.querySelector(s);
             const t = visibleText(el);
-            if (t) { headline = t; break; }
+            if (t && !isMutual(t) && !isDegree(t) && !isAction(t.toLowerCase())) { headline = t; break; }
         }
         if (!headline) headline = headlineFromLines(lines, name);
+        if (isMutual(headline) || isAction((headline || '').toLowerCase())) headline = '';
         let location = '';
         for (const s of ['.entity-result__secondary-subtitle', '[class*="secondary-subtitle"]', '.artdeco-entity-lockup__caption']) {
             const el = card.querySelector(s);
             const t = visibleText(el);
-            if (t) { location = t; break; }
+            if (t && !isMutual(t) && !isDegree(t) && !isAction(t.toLowerCase())) { location = t; break; }
         }
         if (!location) location = locationFromLines(lines, name);
+        if (isMutual(location) || isAction((location || '').toLowerCase())) location = '';
         let photo = '';
         const photoEl = pickCardPhotoEl(card);
         if (photoEl) {
@@ -384,7 +395,20 @@ def _useful_line(text: str, name: str) -> bool:
         return False
     if low.startswith("http"):
         return False
+    if _is_junk_meta(low):
+        return False
     return True
+
+
+def _is_junk_meta(text: str) -> bool:
+    low = re.sub(r"\s+", " ", (text or "").strip().lower())
+    if not low:
+        return True
+    if re.search(r"\bmutual\b|(?:and|&)\s*\d+\s+other|^connections?$|\d+\s+connections?\b", low):
+        return True
+    if _DEGREE_LINE_RE.match(low) or _UI_JUNK_LINE_RE.match(low):
+        return True
+    return False
 
 
 def _headline_from_lines(useful: list[str]) -> str:
@@ -1009,10 +1033,18 @@ def search_people_urls(
                 parsed_headline, parsed_loc, companies = _from_lines(
                     list(item.get("lines") or []), display_name
                 )
+                if _is_junk_meta(headline):
+                    headline = ""
+                if _is_junk_meta(loc):
+                    loc = ""
                 if not headline:
                     headline = parsed_headline
                 if not loc:
                     loc = parsed_loc
+                if _is_junk_meta(headline):
+                    headline = ""
+                if _is_junk_meta(loc):
+                    loc = ""
                 photo_src = str(item.get("photo") or "").strip()
                 found.append(
                     {

@@ -561,6 +561,41 @@ def _persist(
         with _web_src():
             from src.store import upsert_person
 
+            snapshot = {}
+            for key in (
+                "name",
+                "headline",
+                "current_role",
+                "current_company",
+                "location",
+                "about",
+                "links",
+                "twitter",
+                "other_channels",
+                "linkedin_profile_url",
+                "url",
+            ):
+                val = row.get(key)
+                if val in (None, "", []):
+                    continue
+                snapshot[key] = val
+            snapshot.update(
+                {
+                    "email_entries": emails,
+                    "phone_entries": phones,
+                    "company_email_entries": company_emails,
+                    "company_phone_entries": company_phones,
+                    "company_emails": [item["value"] for item in company_emails],
+                    "company_phones": [item["value"] for item in company_phones],
+                }
+            )
+            if row.get("headline"):
+                snapshot["headline"] = row.get("headline")
+            if row.get("current_role"):
+                snapshot["role"] = row.get("current_role")
+                snapshot["current_role"] = row.get("current_role")
+            if row.get("location"):
+                snapshot["location"] = row.get("location")
             upsert_person(
                 {
                     "linkedin_url": row.get("linkedin_profile_url") or row.get("url"),
@@ -571,19 +606,27 @@ def _persist(
                     "emails": [item["value"] for item in emails],
                     "phones": [item["value"] for item in phones],
                     "sources": list(dict.fromkeys(item["source"] for item in emails + phones + company_emails + company_phones)),
-                    "profile": {
-                        "headline": row.get("headline"),
-                        "role": row.get("current_role"),
-                        "location": row.get("location"),
-                        "email_entries": emails,
-                        "phone_entries": phones,
-                        "company_email_entries": company_emails,
-                        "company_phone_entries": company_phones,
-                    },
+                    "profile": snapshot,
                 }
             )
     except Exception:
         pass
+
+
+def cached_profile(url: str) -> dict[str, Any] | None:
+    try:
+        with _web_src():
+            from src.store import find_person_by_url, person_to_profile
+
+            rec = find_person_by_url(url)
+            if not rec:
+                return None
+            row = person_to_profile(rec)
+            if not row.get("name"):
+                return None
+            return row
+    except Exception:
+        return None
 
 
 def enrich_profile(row: dict[str, Any], hints: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -9,8 +9,8 @@ from src.config import (
     Settings,
     get_settings,
 )
-from src.extract import extract_profile
-from src.contacts import enrich_profile
+from src.extract import extract_profile, extract_profile_visuals
+from src.contacts import cached_profile, enrich_profile
 
 
 def load_urls(path: Path = URLS_PATH) -> list[str]:
@@ -37,46 +37,57 @@ def run(
     if not urls:
         raise RuntimeError("No profile URLs provided")
 
+    total = len(urls)
+    results: list[dict[str, Any] | None] = [None] * total
+    saved: list[dict[str, Any] | None] = [cached_profile(url) for url in urls]
+
+    def emit(index: int, step: str, row: dict[str, Any] | None = None, *, pct: int | None = None) -> None:
+        if not on_progress:
+            return
+        payload = {
+            "pct": int(((index + 1) / max(total, 1)) * 100) if pct is None else pct,
+            "step": step,
+            "index": index + 1,
+            "total": total,
+        }
+        if row is not None:
+            payload["profile"] = row
+        on_progress(payload)
+
     playwright = open_playwright()
     browser = None
-    results: list[dict[str, Any]] = []
+    visits = 0
     try:
         browser, context = create_authenticated_context(playwright, settings)
         if settings.headless:
             settings.delay_min_seconds = min(float(settings.delay_min_seconds), 0.6)
             settings.delay_max_seconds = min(float(settings.delay_max_seconds), 1.2)
         page = context.new_page()
-        total = len(urls)
         for index, url in enumerate(urls):
-            if on_progress:
-                on_progress({
-                    "pct": int((index / max(total, 1)) * 100),
-                    "step": f"Looking up profile {index + 1} of {total}",
-                    "index": index + 1,
-                    "total": total,
-                })
-            row = extract_profile(page, url)
-            if row.get("error") != "auth_required":
-                if on_progress:
-                    on_progress({
-                        "pct": int((index / max(total, 1)) * 100),
-                        "step": f"Checking public contact pages {index + 1} of {total}",
-                        "index": index + 1,
-                        "total": total,
-                    })
-                row = enrich_profile(row, hints=hints)
-            results.append(row)
-            if on_progress:
-                on_progress({
-                    "pct": int(((index + 1) / max(total, 1)) * 100),
-                    "step": f"Finished profile {index + 1} of {total}",
-                    "index": index + 1,
-                    "total": total,
-                    "profile": row,
-                })
-            if row.get("error") == "auth_required":
-                raise RuntimeError(f"Authentication required while visiting {url}")
-            if index < len(urls) - 1:
+            hit = saved[index]
+            start_pct = int((index / max(total, 1)) * 100)
+            if hit:
+                emit(index, f"Loading saved profile {index + 1} of {total}", pct=start_pct)
+                emit(index, f"Getting photo and banner {index + 1} of {total}", pct=start_pct)
+                vis = extract_profile_visuals(page, url)
+                if vis.get("photo"):
+                    hit["photo"] = vis.get("photo")
+                if vis.get("banner"):
+                    hit["banner"] = vis.get("banner")
+                results[index] = hit
+                emit(index, f"Finished profile {index + 1} of {total}", hit)
+            else:
+                emit(index, f"Looking up profile {index + 1} of {total}", pct=start_pct)
+                row = extract_profile(page, url)
+                if row.get("error") != "auth_required":
+                    emit(index, f"Checking public contact pages {index + 1} of {total}", pct=start_pct)
+                    row = enrich_profile(row, hints=hints)
+                results[index] = row
+                emit(index, f"Finished profile {index + 1} of {total}", row)
+                if row.get("error") == "auth_required":
+                    raise RuntimeError(f"Authentication required while visiting {url}")
+            visits += 1
+            if visits < total:
                 delay = random.uniform(
                     settings.delay_min_seconds, settings.delay_max_seconds
                 )
@@ -87,4 +98,4 @@ def run(
             browser.close()
         playwright.stop()
 
-    return results
+    return [row for row in results if isinstance(row, dict)]

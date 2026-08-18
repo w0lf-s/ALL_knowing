@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from src.paths import BOOKMARKS_PATH, CACHE, COMPANY_DIR, NEWS_DIR, PEOPLE_DIR, WORKSPACE_PATH, company_key, ensure_dirs
 
@@ -740,6 +741,232 @@ def get_person(key: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+_NAME_STOP = {"the", "and", "for", "with", "from", "3rd", "2nd", "1st"}
+
+
+def _li_slug(url: str) -> str:
+    match = re.search(r"linkedin\.com/in/([^/?#]+)", str(url or ""), re.I)
+    if not match:
+        return ""
+    return unquote(match.group(1)).strip().rstrip("/").lower()
+
+
+def _person_tokens(text: str) -> list[str]:
+    return [t for t in re.findall(r"[a-z0-9]+", str(text or "").lower()) if len(t) > 1 and t not in _NAME_STOP]
+
+
+def _token_hit(token: str, parts: list[str]) -> bool:
+    for part in parts:
+        if part == token:
+            return True
+        if len(token) >= 3 and (part.startswith(token) or token.startswith(part)):
+            return True
+    return False
+
+
+def _name_matches(stored: str, query: str) -> bool:
+    want = _person_tokens(query)
+    have = _person_tokens(stored)
+    if not want or not have:
+        return False
+    return all(_token_hit(token, have) for token in want)
+
+
+def _field_matches(stored: str, query: str, *, required: bool) -> bool:
+    want = _person_tokens(query)
+    if not want:
+        return True
+    have = _person_tokens(stored)
+    if not have:
+        return not required
+    return all(_token_hit(token, have) for token in want)
+
+
+def _person_emails(row: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: Any) -> None:
+        text = str(raw or "").strip().lower()
+        if not text or "@" not in text or text in seen:
+            return
+        seen.add(text)
+        out.append(text)
+
+    add(row.get("email"))
+    for item in row.get("emails") or []:
+        add(item.get("value") if isinstance(item, dict) else item)
+    profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+    add(profile.get("email"))
+    for item in profile.get("email_entries") or []:
+        add(item.get("value") if isinstance(item, dict) else item)
+    for item in profile.get("emails") or []:
+        add(item.get("value") if isinstance(item, dict) else item)
+    return out
+
+
+def _is_scraped_person(row: dict[str, Any]) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if not _li_slug(str(row.get("linkedin_url") or "")):
+        profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+        if not _li_slug(str(profile.get("linkedin_profile_url") or profile.get("url") or "")):
+            return False
+    name = str(row.get("name") or "").strip()
+    if not name:
+        profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+        name = str(profile.get("name") or "").strip()
+    return bool(name)
+
+
+def list_people() -> list[dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    if PEOPLE_DIR.exists():
+        for path in PEOPLE_DIR.glob("*.json"):
+            data = _read_json(path)
+            if isinstance(data, dict) and data.get("key"):
+                by_key[str(data["key"])] = data
+    client = _sb()
+    if client is not None:
+        try:
+            res = client.table("people").select("*").execute()
+            for row in res.data or []:
+                if isinstance(row, dict) and row.get("key"):
+                    by_key[str(row["key"])] = row
+        except Exception:
+            pass
+    return list(by_key.values())
+
+
+def find_person_by_url(url: str) -> dict[str, Any] | None:
+    slug = _li_slug(url)
+    if not slug:
+        return None
+    candidates = [
+        str(url or "").split("?")[0].rstrip("/"),
+        f"https://www.linkedin.com/in/{slug}",
+        f"https://linkedin.com/in/{slug}",
+        f"https://www.linkedin.com/in/{slug}/",
+    ]
+    for candidate in candidates:
+        rec = get_person(person_key(candidate, "", ""))
+        if rec:
+            return rec
+    for row in list_people():
+        profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+        blob = " ".join(
+            str(x or "")
+            for x in (
+                row.get("linkedin_url"),
+                profile.get("linkedin_profile_url"),
+                profile.get("url"),
+            )
+        )
+        if _li_slug(blob) == slug:
+            return row
+    return None
+
+
+def find_people_for_query(
+    *,
+    url: str = "",
+    name: str = "",
+    company: str = "",
+    email: str = "",
+    role: str = "",
+    location: str = "",
+) -> list[dict[str, Any]]:
+    url_text = str(url or "").strip()
+    if _li_slug(url_text):
+        hit = find_person_by_url(url_text)
+        return [hit] if hit and _is_scraped_person(hit) else []
+    email_n = str(email or "").strip().lower()
+    name_q = str(name or "").strip()
+    if "@" in name_q and not email_n:
+        email_n = name_q.lower()
+        name_q = ""
+    name_tokens = _person_tokens(name_q)
+    company_q = str(company or "").strip()
+    if not email_n and not name_tokens:
+        return []
+    if len(name_tokens) < 2 and not email_n and not company_q:
+        return []
+    out: list[dict[str, Any]] = []
+    for row in list_people():
+        if not _is_scraped_person(row):
+            continue
+        profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+        if email_n and email_n not in _person_emails(row):
+            continue
+        stored_name = str(row.get("name") or profile.get("name") or "")
+        if name_tokens and not _name_matches(stored_name, name_q):
+            continue
+        stored_company = str(row.get("company") or profile.get("current_company") or "")
+        if company_q and not _field_matches(stored_company, company_q, required=True):
+            continue
+        stored_role = str(profile.get("current_role") or profile.get("role") or "")
+        if not _field_matches(stored_role, role, required=False):
+            continue
+        stored_location = str(profile.get("location") or "")
+        if not _field_matches(stored_location, location, required=False):
+            continue
+        out.append(row)
+    return out
+
+
+def person_to_profile(row: dict[str, Any]) -> dict[str, Any]:
+    profile = row.get("profile") if isinstance(row.get("profile"), dict) else {}
+    url = str(
+        row.get("linkedin_url")
+        or profile.get("linkedin_profile_url")
+        or profile.get("url")
+        or ""
+    ).strip()
+    email_entries = profile.get("email_entries") if isinstance(profile.get("email_entries"), list) else []
+    phone_entries = profile.get("phone_entries") if isinstance(profile.get("phone_entries"), list) else []
+    company_email_entries = profile.get("company_email_entries") if isinstance(profile.get("company_email_entries"), list) else []
+    company_phone_entries = profile.get("company_phone_entries") if isinstance(profile.get("company_phone_entries"), list) else []
+    emails = row.get("emails") if isinstance(row.get("emails"), list) else profile.get("emails")
+    phones = row.get("phones") if isinstance(row.get("phones"), list) else profile.get("phones")
+    if not isinstance(emails, list):
+        emails = [item.get("value") for item in email_entries if isinstance(item, dict) and item.get("value")]
+    if not isinstance(phones, list):
+        phones = [item.get("value") for item in phone_entries if isinstance(item, dict) and item.get("value")]
+    company_emails = profile.get("company_emails") if isinstance(profile.get("company_emails"), list) else [
+        item.get("value") for item in company_email_entries if isinstance(item, dict) and item.get("value")
+    ]
+    company_phones = profile.get("company_phones") if isinstance(profile.get("company_phones"), list) else [
+        item.get("value") for item in company_phone_entries if isinstance(item, dict) and item.get("value")
+    ]
+    return {
+        "url": url,
+        "linkedin_profile_url": url.split("?")[0] if url else "",
+        "name": row.get("name") or profile.get("name"),
+        "headline": profile.get("headline"),
+        "current_role": profile.get("current_role") or profile.get("role"),
+        "current_company": row.get("company") or profile.get("current_company"),
+        "location": profile.get("location"),
+        "about": profile.get("about"),
+        "email": row.get("email") or profile.get("email"),
+        "phone": row.get("phone") or profile.get("phone"),
+        "emails": emails or [],
+        "phones": phones or [],
+        "email_entries": email_entries,
+        "phone_entries": phone_entries,
+        "company_emails": company_emails or [],
+        "company_phones": company_phones or [],
+        "company_email_entries": company_email_entries,
+        "company_phone_entries": company_phone_entries,
+        "links": profile.get("links") if isinstance(profile.get("links"), list) else [],
+        "twitter": profile.get("twitter"),
+        "other_channels": profile.get("other_channels") if isinstance(profile.get("other_channels"), list) else [],
+        "photo": None,
+        "banner": None,
+        "error": None,
+        "from_cache": True,
+    }
+
+
 def _contact_entry_key(value: str, kind: str) -> str:
     text = str(value or "").strip()
     if kind == "phone":
@@ -828,8 +1055,14 @@ def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
     if phone and (phone.count(".") > 1 or re.search(r"[A-Za-z]", phone) or not (10 <= len(re.sub(r"\D", "", phone)) <= 15)):
         phone = phones[0] if phones else None
     profile = dict(prev_profile)
-    profile.update(new_profile)
+    for key, value in new_profile.items():
+        if value in (None, "", []):
+            continue
+        profile[key] = value
     profile.pop("guessed_emails", None)
+    profile.pop("photo", None)
+    profile.pop("banner", None)
+    profile.pop("shot", None)
     profile["email_entries"] = email_entries
     profile["phone_entries"] = phone_entries
     profile["company_email_entries"] = company_email_entries

@@ -959,6 +959,10 @@ table.filings-table td:nth-child(4) {
     align-items: flex-start;
 }
 
+.people-match-banner:not(.people-match-banner-has-img) {
+    display: none;
+}
+
 .people-match-photo {
     width: 76px;
     height: 76px;
@@ -1070,12 +1074,48 @@ table.filings-table td:nth-child(4) {
 
 .people-profile-card .people-match-banner {
     border-radius: 16px 16px 0 0;
+    display: flex;
 }
 
 .people-match-actions {
     flex-shrink: 0;
     padding-top: 0.55rem;
     align-self: center;
+}
+
+.people-match-flat .people-match-body-flat {
+    padding: 1rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.people-match-flat .people-match-photo {
+    margin-top: 0;
+    width: 64px;
+    height: 64px;
+    border: none;
+}
+
+.people-match-flat .people-match-info {
+    padding-top: 0;
+}
+
+.people-match-flat .people-match-actions {
+    flex-basis: 100%;
+    padding-top: 0.2rem;
+    align-self: stretch;
+}
+
+.people-match-flat .people-match-actions .btn {
+    width: 100%;
+}
+
+.people-profile-card .people-match-body-flat {
+    padding: 1.15rem 1.35rem 0;
+}
+
+.people-profile-card .people-match-body-flat .people-match-photo {
+    margin-top: 0;
 }
 
 .news-item {

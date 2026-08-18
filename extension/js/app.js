@@ -966,6 +966,26 @@ function renderProfileContact(p) {
     </div>`;
 }
 
+function isPeopleJunkLine(text) {
+    const s = String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!s) return true;
+    if (/\bmutual\b/.test(s)) return true;
+    if (/(?:and|&)\s*\d+\s+other/.test(s)) return true;
+    if (/^connections?$/.test(s)) return true;
+    if (/\d+\s+connections?\b/.test(s)) return true;
+    return false;
+}
+
+function peopleJobField(value, headline) {
+    const v = val(value);
+    const h = val(headline);
+    if (!v) return '';
+    if (h && v === h) return '';
+    if (h && v.length >= 12 && h.includes(v) && /\|/.test(h)) return '';
+    if ((v.match(/\|/g) || []).length >= 1 && v.length > 40) return '';
+    return v;
+}
+
 function matchInitials(name) {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return '?';
@@ -982,18 +1002,20 @@ function peopleVisualFields(item) {
     };
 }
 
-function renderPeopleBannerPhoto(name, photo, banner) {
-    const cover = String(banner || '').trim();
-    const bannerInner = cover
-        ? `<img class="people-match-banner-img" src="${esc(cover)}" alt="">`
-        : '';
-    const photoHtml = photo
+function renderPeoplePhotoHtml(name, photo) {
+    return photo
         ? `<img class="people-match-photo" src="${esc(photo)}" alt="">`
         : `<div class="people-match-photo people-match-photo-fallback">${esc(matchInitials(name))}</div>`;
-    return `<div class="people-match-banner${cover ? ' people-match-banner-has-img' : ''}">${bannerInner}</div>
-        <div class="people-match-body people-match-body-visual">
-            ${photoHtml}
-        </div>`;
+}
+
+function renderPeopleBannerPhoto(name, photo, banner) {
+    const cover = String(banner || '').trim();
+    const photoHtml = renderPeoplePhotoHtml(name, photo);
+    if (!cover) {
+        return `<div class="people-match-body people-match-body-visual people-match-body-flat">${photoHtml}</div>`;
+    }
+    return `<div class="people-match-banner people-match-banner-has-img"><img class="people-match-banner-img" src="${esc(cover)}" alt=""></div>
+        <div class="people-match-body people-match-body-visual">${photoHtml}</div>`;
 }
 
 function renderPeopleVisual(name, item) {
@@ -1017,20 +1039,21 @@ function profileVisual(p) {
 function renderMatchPreview(item, index, profiles, cands, allowScrape, scraping) {
     const url = item.url || item;
     const name = candidateDisplayName(url, profiles, cands);
-    const headline = String(item.headline || '').trim();
-    const location = String(item.location || '').trim();
+    const headline = isPeopleJunkLine(item.headline) ? '' : String(item.headline || '').trim();
+    const location = isPeopleJunkLine(item.location) ? '' : String(item.location || '').trim();
     const companies = Array.isArray(item.companies) ? item.companies.filter(Boolean) : [];
+    const vis = peopleVisualFields(item);
+    const photoHtml = renderPeoplePhotoHtml(name, vis.photo);
     const look = allowScrape
         ? `<button type="button" class="btn btn-secondary scrape-one-btn" data-url="${esc(url)}" ${scraping ? 'disabled' : ''}>Look up</button>`
         : '';
     const coHtml = companies.length
         ? `<div class="people-match-cos">${companies.map(c => `<span class="people-match-co">${esc(c)}</span>`).join('')}</div>`
         : '';
-    const visual = renderPeopleVisual(name, item);
-    return `<article class="people-match">
-        ${visual}
-        <div class="people-match-body people-match-body-details">
-            <div class="people-match-info people-match-info-visual">
+    return `<article class="people-match people-match-flat">
+        <div class="people-match-body people-match-body-flat">
+            ${photoHtml}
+            <div class="people-match-info">
                 <h4>${esc(name)}</h4>
                 ${headline ? `<p class="people-match-headline">${esc(headline)}</p>` : ''}
                 ${location ? `<p class="people-match-location">${esc(location)}</p>` : ''}
@@ -1087,8 +1110,9 @@ function renderProfiles(profiles, candidateUrls, candidates, opts) {
             <div class="people-profile-main">
                 <h3>${esc(name)}</h3>
                 <table>
-                    ${row('Role', val(p.current_role))}
-                    ${row('Company', val(p.current_company))}
+                    ${row('Headline', val(p.headline))}
+                    ${row('Role', peopleJobField(p.current_role, p.headline))}
+                    ${row('Company', peopleJobField(p.current_company, p.headline))}
                     ${p.error ? `<tr><th>Error</th><td style="color:#fca5a5">${esc(p.error)}</td></tr>` : ''}
                 </table>
                 ${renderProfileContact(p)}
@@ -1158,10 +1182,10 @@ function filterPeopleCandidates(candidates, name, profileUrl) {
         return {
             url: String(c.url || '').trim(),
             name: String(c.name || '').trim(),
-            headline: String(c.headline || '').trim(),
-            location: String(c.location || '').trim(),
+            headline: isPeopleJunkLine(c.headline) ? '' : String(c.headline || '').trim(),
+            location: isPeopleJunkLine(c.location) ? '' : String(c.location || '').trim(),
             photo: String(c.photo || '').trim(),
-            banner: String(c.banner || '').trim(),
+            banner: '',
             shot: String(c.shot || '').trim(),
             companies,
         };
@@ -1937,6 +1961,7 @@ async function streamPeopleSearch(body, signal) {
     const dec = new TextDecoder();
     let buf = '';
     let candidates = [];
+    let profiles = [];
     let error = '';
     let cancelled = false;
     while (true) {
@@ -1954,10 +1979,12 @@ async function streamPeopleSearch(body, signal) {
                 if (!msg || typeof msg !== 'object') return;
                 if (msg.step) applyPeopleSearchProgress(Number(msg.pct) || state.linkedin.progressPct || 0, msg.step);
                 if (Array.isArray(msg.candidates)) candidates = msg.candidates;
+                if (Array.isArray(msg.profiles)) profiles = msg.profiles;
                 if (msg.cancelled) cancelled = true;
                 if (msg.done) {
                     if (msg.error) error = String(msg.error);
                     if (Array.isArray(msg.candidates)) candidates = msg.candidates;
+                    if (Array.isArray(msg.profiles)) profiles = msg.profiles;
                 }
             });
         }
@@ -1968,7 +1995,7 @@ async function streamPeopleSearch(body, signal) {
         throw err;
     }
     if (error) throw new Error(error);
-    return candidates;
+    return { candidates, profiles };
 }
 
 $('people-form').addEventListener('submit', async (e) => {
@@ -2029,7 +2056,7 @@ $('people-form').addEventListener('submit', async (e) => {
             state.linkedin.candidates = [];
         } else {
             applyPeopleSearchProgress(4, 'Opening LinkedIn...');
-            const candidates = await streamPeopleSearch({
+            const found = await streamPeopleSearch({
                 name: fields.name || fields.email,
                 company: fields.company,
                 title: fields.role,
@@ -2038,18 +2065,24 @@ $('people-form').addEventListener('submit', async (e) => {
                 max_profiles: 10,
             }, controller.signal);
             if (activePeopleSearch.stopped) return;
-            state.linkedin.candidates = filterPeopleCandidates(
-                candidates || [],
-                fields.name || fields.email,
-                profileUrl
-            );
-            state.linkedin.candidateUrls = state.linkedin.candidates.map(c => c.url);
-            state.linkedin.profiles = [];
-            if (!state.linkedin.candidates.length && (fields.email || fields.phone || fields.company)) {
-                applyPeopleSearchProgress(90, 'Checking public contact pages...');
-                const enriched = await postJson('/api/people/enrich', hints, controller.signal);
-                if (activePeopleSearch.stopped) return;
-                if (enriched.profile) state.linkedin.profiles = [enriched.profile];
+            if (found.profiles && found.profiles.length) {
+                state.linkedin.profiles = found.profiles;
+                state.linkedin.candidates = [];
+                state.linkedin.candidateUrls = [];
+            } else {
+                state.linkedin.candidates = filterPeopleCandidates(
+                    found.candidates || [],
+                    fields.name || fields.email,
+                    profileUrl
+                );
+                state.linkedin.candidateUrls = state.linkedin.candidates.map(c => c.url);
+                state.linkedin.profiles = [];
+                if (!state.linkedin.candidates.length && (fields.email || fields.phone || fields.company)) {
+                    applyPeopleSearchProgress(90, 'Checking public contact pages...');
+                    const enriched = await postJson('/api/people/enrich', hints, controller.signal);
+                    if (activePeopleSearch.stopped) return;
+                    if (enriched.profile) state.linkedin.profiles = [enriched.profile];
+                }
             }
         }
         if (activePeopleSearch.stopped) return;

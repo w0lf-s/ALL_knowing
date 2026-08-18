@@ -883,13 +883,19 @@ def _extract_dom_contact(page: Page, data: dict[str, Any], captured: list[dict[s
 def _split_role_company(headline: str | None) -> tuple[str | None, str | None]:
     if not headline:
         return None, None
-    for sep in (" at ", " @ ", " | "):
-        if sep.lower() in headline.lower():
-            idx = headline.lower().find(sep.lower())
-            left = headline[:idx].strip()
-            right = headline[idx + len(sep) :].strip()
-            return left or None, right or None
-    return headline.strip() or None, None
+    text = headline.strip()
+    if not text or "|" in text:
+        return None, None
+    for sep in (" at ", " @ "):
+        if sep.lower() not in text.lower():
+            continue
+        idx = text.lower().find(sep.lower())
+        left = text[:idx].strip(" -–—|·")
+        right = text[idx + len(sep) :].strip()
+        right = re.split(r"\s*[|·•]\s*", right)[0].strip(" -–—")
+        if left and right and len(right) < 80:
+            return left, right
+    return None, None
 
 
 def _safe_text(locator: Locator, timeout: int = 4000) -> str | None:
@@ -1026,10 +1032,16 @@ def _extract_dom_profile(page: Page, data: dict[str, Any]) -> None:
             company = _safe_text(item.locator(".t-14.t-normal span[aria-hidden='true'], span.t-14.t-normal"))
             if company and "·" in company:
                 company = company.split("·")[0].strip() or None
+            if role and "|" in role:
+                role = None
+            if company and ("|" in company or len(company) > 80):
+                company = None
         except Exception:
             pass
         if not role and not company:
             role, company = _split_role_company(data.get("headline"))
+        if role and data.get("headline") and role.strip() == str(data.get("headline")).strip():
+            role = None
         _merge_field(data, "current_role", role)
         _merge_field(data, "current_company", company)
 
@@ -1085,23 +1097,41 @@ _IMAGE_URLS_JS = """() => {
         }
         return '';
     };
-    const good = /profile-displaybackground|displaybackground|profile-background/i;
-    let banner = '';
-    if (top) {
-        for (const img of top.querySelectorAll('.profile-background-image img, .pv-top-card__bg-container img, img')) {
+    const pickBanner = () => {
+        const root = top || document.querySelector('main') || document.body;
+        if (!root) return '';
+        const photoRe = /profile-displayphoto|framedphoto|ghost|sprite|emoji/i;
+        const coverRe = /profile-displaybackground|displaybackground|profile-background|backgroundimage|cover-photo|16_9|16aq/i;
+        const named = root.querySelector('.profile-background-image img, .pv-top-card__bg-container img, img.profile-background-image__image, img[src*="displaybackground"], img[srcset*="displaybackground"]');
+        if (named) {
+            const u = urlFromImg(named);
+            if (u && !photoRe.test(u)) return u;
+        }
+        const topImgs = [...root.querySelectorAll('img')].filter((img) => {
+            const r = img.getBoundingClientRect();
+            return r.width >= 160 && r.height >= 32 && r.top < 560;
+        });
+        for (const img of topImgs) {
             const src = urlFromImg(img);
             const set = img.getAttribute('srcset') || '';
-            if ((good.test(src) || good.test(set)) && !/profile-displayphoto/i.test(src)) { banner = src; break; }
+            if ((coverRe.test(src) || coverRe.test(set)) && !photoRe.test(src)) return src;
         }
-        if (!banner) {
-            for (const el of top.querySelectorAll('.profile-background-image, .pv-top-card__bg-container')) {
-                const bg = getComputedStyle(el).backgroundImage || '';
-                const m = bg.match(/url\\(["']?(.+?)["']?\\)/);
-                if (m && m[1] && good.test(m[1]) && !m[1].startsWith('data:')) { banner = m[1]; break; }
-            }
+        for (const img of topImgs) {
+            const r = img.getBoundingClientRect();
+            const src = urlFromImg(img);
+            if (!src || photoRe.test(src)) continue;
+            if (r.width >= r.height * 1.55) return src;
         }
-    }
-    return { photo: pickPhoto(), banner };
+        for (const el of root.querySelectorAll('.profile-background-image, .pv-top-card__bg-container, div, section, span')) {
+            const r = el.getBoundingClientRect();
+            if (r.width < 220 || r.height < 36 || r.height > 380 || r.top > 520) continue;
+            const bg = getComputedStyle(el).backgroundImage || '';
+            const m = bg.match(/url\\(["']?(.+?)["']?\\)/);
+            if (m && m[1] && !m[1].startsWith('data:') && !photoRe.test(m[1]) && (coverRe.test(m[1]) || r.width >= r.height * 1.55)) return m[1];
+        }
+        return '';
+    };
+    return { photo: pickPhoto(), banner: pickBanner() };
 }"""
 
 _IMAGE_DATA_JS = """async (url) => {
@@ -1145,7 +1175,69 @@ def _url_to_data(page: Page, url: str) -> str | None:
         return None
 
 
+def _banner_clip_shot(page: Page) -> str | None:
+    try:
+        page.evaluate("() => window.scrollTo(0, 0)")
+        page.wait_for_timeout(250 if _fast() else 400)
+    except Exception:
+        pass
+    try:
+        box = page.evaluate(
+            """() => {
+                const h1 = document.querySelector('main h1, h1');
+                const main = document.querySelector('main');
+                if (!h1 && !main) return null;
+                const photo = document.querySelector(
+                    '.pv-top-card-profile-picture, button.pv-top-card-profile-picture, img[src*="profile-displayphoto"], img[srcset*="profile-displayphoto"]'
+                );
+                let topEl = null;
+                let n = (h1 && h1.parentElement) || (main && main.firstElementChild);
+                for (let i = 0; i < 14 && n; i++) {
+                    const r = n.getBoundingClientRect();
+                    if (r.width >= 300 && r.height >= 70) topEl = n;
+                    if (main && n === main) break;
+                    n = n.parentElement;
+                }
+                const r = (topEl || main || h1).getBoundingClientRect();
+                const photoR = photo ? photo.getBoundingClientRect() : null;
+                let height = Math.min(210, Math.max(88, r.width * 0.22));
+                if (photoR && photoR.top > r.top + 36) {
+                    height = Math.max(72, Math.min(240, photoR.top - r.top + 8));
+                }
+                return {
+                    x: Math.max(0, r.x),
+                    y: Math.max(0, r.y),
+                    width: Math.max(80, r.width),
+                    height: Math.max(56, height),
+                };
+            }"""
+        )
+        if not isinstance(box, dict):
+            return None
+        x = float(box.get("x") or 0)
+        y = float(box.get("y") or 0)
+        w = float(box.get("width") or 0)
+        h = float(box.get("height") or 0)
+        if w < 80 or h < 40:
+            return None
+        raw = page.screenshot(
+            type="jpeg",
+            quality=62,
+            clip={"x": x, "y": y, "width": w, "height": h},
+        )
+        if not raw:
+            return None
+        return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+    except Exception:
+        return None
+
+
 def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
+    try:
+        page.evaluate("() => window.scrollTo(0, 0)")
+        page.wait_for_timeout(200 if _fast() else 350)
+    except Exception:
+        pass
     try:
         urls = page.evaluate(_IMAGE_URLS_JS) or {}
     except Exception:
@@ -1181,6 +1273,9 @@ def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
                 return
         except Exception:
             continue
+    shot = _banner_clip_shot(page)
+    if shot:
+        data["banner"] = shot
 
 
 def _write_debug(page: Page, url: str, captured_count: int, data: dict[str, Any]) -> None:
@@ -1256,6 +1351,19 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
         _detach_response_capture(page, handler)
 
     return data
+
+
+def extract_profile_visuals(page: Page, url: str) -> dict[str, Any]:
+    out: dict[str, Any] = {"photo": None, "banner": None}
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=45000 if _fast() else 60000)
+        page.wait_for_timeout(500 if _fast() else 1500)
+        if _page_looks_like_authwall(page):
+            return out
+        _extract_profile_images(page, out)
+    except Exception:
+        return out
+    return out
 
 
 def is_successful_row(row: dict[str, Any]) -> bool:
