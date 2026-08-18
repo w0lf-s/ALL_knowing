@@ -1075,23 +1075,82 @@ _IMAGE_URLS_JS = """() => {
             if (u && w >= bestW) { best = u; bestW = w; }
         }
         const src = img.currentSrc || img.getAttribute('src') || '';
-        for (const u of [delayed, best, src]) {
+        const attrSrc = img.getAttribute('src') || '';
+        const rawSrc = img.src || '';
+        for (const u of [delayed, best, src, rawSrc, attrSrc]) {
             if (!skipImgUrl(u)) return u;
         }
         return '';
     };
     const pickPhoto = () => {
         if (!top) return '';
+        const h1El = top.querySelector('h1');
+        const h1R = h1El ? h1El.getBoundingClientRect() : null;
+        const centerY = h1R ? (h1R.top + h1R.height / 2) : null;
+
+        const candidates = [];
+        const pushCandidate = (img, sel) => {
+            const u = urlFromImg(img);
+            if (!u) return;
+            const r = img.getBoundingClientRect();
+            if (r.width < 24 || r.height < 24) return;
+            candidates.push({ sel, url: u, x: r.x, y: r.y, w: r.width, h: r.height });
+        };
+
         for (const s of [
             'img.pv-top-card-profile-picture__image',
             'button.pv-top-card-profile-picture img',
             '.pv-top-card-profile-picture img',
-            'img[src*="profile-displayphoto"]',
-            'img[srcset*="profile-displayphoto"]',
+            '.pv-top-card-profile-picture__container img',
+            'div.pv-top-card__photo-wrapper img',
+            '.profile-photo-edit img',
         ]) {
             const el = top.querySelector(s);
             if (!el) continue;
             const img = el.matches('img') ? el : el.querySelector('img');
+            if (img) pushCandidate(img, s);
+        }
+
+        const accept = (r) => {
+            if (!h1R) return true;
+            const imgCenterY = r.y + (r.h / 2);
+            return imgCenterY >= h1R.top - 200 && imgCenterY <= h1R.bottom + 160;
+        };
+
+        let best = '';
+        let bestArea = 0;
+        let bestDist = 1e15;
+
+        for (const c of candidates) {
+            if (!accept(c)) continue;
+            const area = c.w * c.h;
+            const dist = centerY == null ? 0 : Math.abs((c.y + c.h / 2) - centerY);
+            if (area > bestArea || (area === bestArea && dist < bestDist)) {
+                best = c.url;
+                bestArea = area;
+                bestDist = dist;
+            }
+        }
+
+        if (best) return best;
+
+        for (const c of candidates) {
+            const area = c.w * c.h;
+            const dist = centerY == null ? 0 : Math.abs((c.y + c.h / 2) - centerY);
+            if (area > bestArea || (area === bestArea && dist < bestDist)) {
+                best = c.url;
+                bestArea = area;
+                bestDist = dist;
+            }
+        }
+        if (best) return best;
+
+        if (!h1R) return '';
+        for (const img of top.querySelectorAll('img[src*="profile-displayphoto"], img[srcset*="profile-displayphoto"]')) {
+            const r = img.getBoundingClientRect();
+            const fake = { y: r.y, h: r.height, w: r.width };
+            if (!accept(fake)) continue;
+            if (r.width < 24 || r.height < 24) continue;
             const u = urlFromImg(img);
             if (u) return u;
         }
@@ -1232,6 +1291,38 @@ def _banner_clip_shot(page: Page) -> str | None:
         return None
 
 
+def _photo_screenshot(page: Page) -> str | None:
+    for sel in (
+        "button.pv-top-card-profile-picture img",
+        "img.pv-top-card-profile-picture__image",
+        ".pv-top-card-profile-picture img",
+        ".pv-top-card-profile-picture__container img",
+        "div.pv-top-card__photo-wrapper img",
+    ):
+        try:
+            loc = page.locator(sel).first
+            if loc.count() == 0:
+                continue
+            loc.scroll_into_view_if_needed(timeout=2000)
+            page.wait_for_timeout(300)
+            raw = loc.screenshot(type="jpeg", quality=80)
+            if raw and len(raw) > 500:
+                return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+        except Exception:
+            continue
+    try:
+        loc = page.locator("main img[src*='profile-displayphoto']").first
+        if loc.count():
+            box = loc.bounding_box()
+            if box and box["y"] < 500 and box["width"] >= 40:
+                raw = loc.screenshot(type="jpeg", quality=80)
+                if raw and len(raw) > 500:
+                    return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+    except Exception:
+        pass
+    return None
+
+
 def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
     try:
         page.evaluate("() => window.scrollTo(0, 0)")
@@ -1239,16 +1330,32 @@ def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
     except Exception:
         pass
     try:
+        page.wait_for_selector(
+            "img.pv-top-card-profile-picture__image, button.pv-top-card-profile-picture img, img[src*='profile-displayphoto']",
+            timeout=5000 if _fast() else 8000,
+        )
+        page.wait_for_timeout(300 if _fast() else 600)
+    except Exception:
+        pass
+    try:
         urls = page.evaluate(_IMAGE_URLS_JS) or {}
     except Exception:
         urls = {}
     if isinstance(urls, dict):
-        photo = _url_to_data(page, str(urls.get("photo") or ""))
+        photo_url = str(urls.get("photo") or "")
+        photo_url_hires = photo_url.replace("scale_100_100", "scale_400_400").replace("shrink_100_100", "shrink_400_400") if photo_url else ""
+        photo = _url_to_data(page, photo_url_hires) if photo_url_hires != photo_url else None
+        if not photo:
+            photo = _url_to_data(page, photo_url)
         banner = _url_to_data(page, str(urls.get("banner") or ""))
         if photo:
             data["photo"] = photo
         if banner:
             data["banner"] = banner
+    if not data.get("photo"):
+        shot = _photo_screenshot(page)
+        if shot:
+            data["photo"] = shot
     if data.get("banner"):
         return
     h1 = page.locator("main h1").first
@@ -1357,7 +1464,13 @@ def extract_profile_visuals(page: Page, url: str) -> dict[str, Any]:
     out: dict[str, Any] = {"photo": None, "banner": None}
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=45000 if _fast() else 60000)
-        page.wait_for_timeout(500 if _fast() else 1500)
+        page.wait_for_timeout(700 if _fast() else 2500)
+        if not _fast():
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                pass
+            page.wait_for_timeout(800)
         if _page_looks_like_authwall(page):
             return out
         _extract_profile_images(page, out)
