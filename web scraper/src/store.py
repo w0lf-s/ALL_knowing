@@ -138,6 +138,7 @@ def get_cached(source: str, key: str, ttl_seconds: int) -> Any | None:
                     return rows[0].get("data")
         except Exception:
             pass
+        return None
     path = CACHE / source / f"{_safe_key(key)}.json"
     payload = _read_json(path)
     if not isinstance(payload, dict):
@@ -200,6 +201,7 @@ def load_news_day(ckey: str, day: str | None = None) -> dict[str, Any] | None:
                 client.table("news_days").delete().eq("company_key", ckey).eq("day", d).execute()
         except Exception:
             pass
+        return None
     path = NEWS_DIR / ckey / f"{d}.json"
     data = _read_json(path)
     if isinstance(data, dict) and news_is_fresh(data.get("fetched_at") or d):
@@ -392,6 +394,7 @@ def get_company_record(key: str) -> dict[str, Any] | None:
                 return rec
         except Exception:
             pass
+        return None
     path = COMPANY_DIR / f"{key}.json"
     data = _read_json(path)
     if not isinstance(data, dict):
@@ -531,10 +534,7 @@ def add_bookmark(key: str) -> None:
         client.table("bookmarks").upsert({"company_key": k, "created_at": _now_iso()}).execute()
         return
     except Exception:
-        local = _local_bookmark_keys()
-        if k not in local:
-            local.append(k)
-            _write_local_bookmarks(local)
+        return
 
 
 def remove_bookmark(key: str) -> None:
@@ -589,10 +589,7 @@ def list_bookmarks() -> list[str]:
                 return list(dict.fromkeys(keys))
         except Exception:
             pass
-        if local:
-            for item in local:
-                add_bookmark(item)
-            return list(dict.fromkeys(local))
+        return []
     if local:
         return local
     data = _read_json(WORKSPACE_PATH)
@@ -626,6 +623,7 @@ def get_workspace() -> dict[str, Any]:
                 return payload
         except Exception:
             pass
+        return {"exists": False, "bookmarks": list_bookmarks(), "leads": [], "linkedin": {}}
     data = _read_json(WORKSPACE_PATH)
     if isinstance(data, dict):
         leads = data.get("leads") if isinstance(data.get("leads"), list) else []
@@ -737,6 +735,7 @@ def get_person(key: str) -> dict[str, Any] | None:
                 return rows[0]
         except Exception:
             pass
+        return None
     data = _read_json(_person_path(k))
     return data if isinstance(data, dict) else None
 
@@ -821,11 +820,6 @@ def _is_scraped_person(row: dict[str, Any]) -> bool:
 
 def list_people() -> list[dict[str, Any]]:
     by_key: dict[str, dict[str, Any]] = {}
-    if PEOPLE_DIR.exists():
-        for path in PEOPLE_DIR.glob("*.json"):
-            data = _read_json(path)
-            if isinstance(data, dict) and data.get("key"):
-                by_key[str(data["key"])] = data
     client = _sb()
     if client is not None:
         try:
@@ -835,6 +829,12 @@ def list_people() -> list[dict[str, Any]]:
                     by_key[str(row["key"])] = row
         except Exception:
             pass
+        return list(by_key.values())
+    if PEOPLE_DIR.exists():
+        for path in PEOPLE_DIR.glob("*.json"):
+            data = _read_json(path)
+            if isinstance(data, dict) and data.get("key"):
+                by_key[str(data["key"])] = data
     return list(by_key.values())
 
 
@@ -1016,12 +1016,12 @@ def _merge_contact_entries(prev: Any, incoming: Any, kind: str, *, allow_company
 
 
 def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
-    key = person_key(
+    person_key_value = person_key(
         record.get("linkedin_url") or record.get("linkedin_profile_url") or record.get("url") or "",
         record.get("name") or "",
         record.get("company") or record.get("current_company") or "",
     )
-    prev = get_person(key) or {}
+    prev = get_person(person_key_value) or {}
     prev_profile = prev.get("profile") if isinstance(prev.get("profile"), dict) else {}
     new_profile = record.get("profile") if isinstance(record.get("profile"), dict) else {}
     prev_emails = prev_profile.get("email_entries") or prev.get("emails") or []
@@ -1055,10 +1055,10 @@ def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
     if phone and (phone.count(".") > 1 or re.search(r"[A-Za-z]", phone) or not (10 <= len(re.sub(r"\D", "", phone)) <= 15)):
         phone = phones[0] if phones else None
     profile = dict(prev_profile)
-    for key, value in new_profile.items():
+    for field, value in new_profile.items():
         if value in (None, "", []):
             continue
-        profile[key] = value
+        profile[field] = value
     profile.pop("guessed_emails", None)
     profile.pop("photo", None)
     profile.pop("banner", None)
@@ -1068,7 +1068,7 @@ def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
     profile["company_email_entries"] = company_email_entries
     profile["company_phone_entries"] = company_phone_entries
     payload = {
-        "key": key,
+        "key": person_key_value,
         "linkedin_url": str(record.get("linkedin_url") or record.get("linkedin_profile_url") or prev.get("linkedin_url") or "").strip() or None,
         "name": str(record.get("name") or prev.get("name") or "").strip() or None,
         "company": str(record.get("company") or record.get("current_company") or prev.get("company") or "").strip() or None,
@@ -1082,11 +1082,11 @@ def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
     }
     client = _sb()
     if client is None:
-        _write_json(_person_path(key), payload)
+        _write_json(_person_path(person_key_value), payload)
         return payload
     try:
         client.table("people").upsert(payload).execute()
     except Exception:
-        _write_json(_person_path(key), payload)
+        pass
     return payload
 
