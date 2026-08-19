@@ -976,7 +976,6 @@ function peopleVisualFields(item) {
     return {
         photo: String(src.photo || '').trim(),
         banner: String(src.banner || '').trim(),
-        shot: String(src.shot || '').trim(),
     };
 }
 
@@ -1010,7 +1009,7 @@ function candidateVisualForUrl(url) {
 
 function profileVisual(p) {
     const own = peopleVisualFields(p);
-    if (own.photo || own.banner || own.shot) return own;
+    if (own.photo || own.banner) return own;
     return candidateVisualForUrl(p.linkedin_profile_url || p.url);
 }
 
@@ -1153,7 +1152,7 @@ function personMatchesQuery(candidate, name, profileUrl) {
 function filterPeopleCandidates(candidates, name, profileUrl) {
     const list = (candidates || []).map(c => {
         if (!c) return null;
-        if (typeof c === 'string') return { url: c, name: '', headline: '', location: '', photo: '', banner: '', shot: '', companies: [] };
+        if (typeof c === 'string') return { url: c, name: '', headline: '', location: '', photo: '', banner: '', companies: [] };
         const companies = Array.isArray(c.companies)
             ? c.companies.map(x => String(x || '').trim()).filter(Boolean).slice(0, 4)
             : [];
@@ -1164,7 +1163,6 @@ function filterPeopleCandidates(candidates, name, profileUrl) {
             location: isPeopleJunkLine(c.location) ? '' : String(c.location || '').trim(),
             photo: String(c.photo || '').trim(),
             banner: '',
-            shot: String(c.shot || '').trim(),
             companies,
         };
     }).filter(c => c && c.url);

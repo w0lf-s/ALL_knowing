@@ -939,19 +939,6 @@ table.filings-table td:nth-child(4) {
     object-position: center;
 }
 
-.people-match-shot {
-    display: block;
-    width: 100%;
-    max-height: 280px;
-    object-fit: cover;
-    object-position: top left;
-    background: #0f172a;
-}
-
-.people-match-body-shot {
-    padding-top: 0.85rem;
-}
-
 .people-match-body {
     display: flex;
     gap: 0.9rem;

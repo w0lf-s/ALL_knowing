@@ -176,6 +176,7 @@ Ctrl+C in the terminal stops the server.
 
 - Company Search includes news; Lead investigation does not until **Look up news**
 - LinkedIn automation can break when the site changes, and accounts can be restricted — keep volume low
+- People lookup caches profile metadata in Supabase; photo/banner visuals are scraped on-demand when rendering results
 - Without Playwright Chromium, company search still runs; article bodies stay thin
 - Alpha Vantage has a daily soft cap (`av_day.json` under the private cache)
 

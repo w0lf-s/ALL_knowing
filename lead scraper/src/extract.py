@@ -1385,10 +1385,6 @@ def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
         data["banner"] = shot
 
 
-def _write_debug(page: Page, url: str, captured_count: int, data: dict[str, Any]) -> None:
-    return
-
-
 def extract_profile(page: Page, url: str) -> dict[str, Any]:
     data = _blank_result(url)
     captured: list[dict[str, Any]] = []
@@ -1407,7 +1403,6 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
 
         if _page_looks_like_authwall(page):
             data["error"] = "auth_required"
-            _write_debug(page, url, len(captured), data)
             return data
 
         _merge_captured(captured, data)
@@ -1442,18 +1437,13 @@ def extract_profile(page: Page, url: str) -> dict[str, Any]:
                 data["error"] = "soft_authwall"
             else:
                 data["error"] = "profile_not_rendered"
-            _write_debug(page, url, len(captured), data)
         elif not data.get("links"):
-            _write_debug(page, url, len(captured), data)
+            pass
         elif not data.get("headline") and not data.get("current_role"):
-            _write_debug(page, url, len(captured), data)
+            pass
 
     except Exception as exc:
         data["error"] = str(exc)
-        try:
-            _write_debug(page, url, len(captured), data)
-        except Exception:
-            pass
     finally:
         _detach_response_capture(page, handler)
 
