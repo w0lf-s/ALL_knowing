@@ -1,3 +1,5 @@
+
+
 import asyncio
 import json
 import os
@@ -770,119 +772,6 @@ def api_linkedin_search():
         name = email
     if not name:
         return _json_error("Enter a name, email, or profile URL")
-    stored = _people_from_store(
-        name="" if "@" in name else name,
-        company=company,
-        title=title,
-        location=location,
-        email=email or (name if "@" in name else ""),
-    )
-    stored_urls = []
-    seen_urls: set[str] = set()
-    for row in stored:
-        item = str(row.get("linkedin_profile_url") or row.get("url") or "").strip()
-        key = item.split("?")[0].rstrip("/").lower()
-        if "/in/" not in key or key in seen_urls:
-            continue
-        seen_urls.add(key)
-        stored_urls.append(item)
-    if stored and not stored_urls:
-        def cached_search():
-            yield "retry: 3600000\n\n"
-            yield f"data: {json.dumps({'pct': 40, 'step': 'Loading saved profile...'})}\n\n"
-            yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': stored, 'candidates': []}, default=str)}\n\n"
-
-        return Response(stream_with_context(cached_search()), mimetype="text/event-stream", headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        })
-    if stored_urls:
-        hints = _people_hints(data)
-        script = _LI_RUNNER.format(
-            li_root=str(ROOT / "lead scraper").replace("\\", "\\\\")
-        )
-        with _linkedin_search_lock:
-            if _linkedin_search_proc is not None and _linkedin_search_proc.poll() is None:
-                _kill_process_tree(_linkedin_search_proc)
-            proc = subprocess.Popen(
-                [str(VENV_PYTHON), "-c", script, json.dumps(stored_urls), json.dumps(hints)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                cwd=str(ROOT / "lead scraper"),
-                env={**os.environ, "HEADLESS": "true", "PYTHONUNBUFFERED": "1"},
-            )
-            _linkedin_search_proc = proc
-
-        def cached_visuals():
-            global _linkedin_search_proc
-            sent_done = False
-            profiles = list(stored)
-            try:
-                yield "retry: 3600000\n\n"
-                yield f"data: {json.dumps({'pct': 12, 'step': 'Loading saved profile...'})}\n\n"
-                assert proc.stdout is not None
-                for line in proc.stdout:
-                    text = line.strip()
-                    if not text:
-                        continue
-                    try:
-                        msg = json.loads(text)
-                    except Exception:
-                        continue
-                    if isinstance(msg, list):
-                        sent_done = True
-                        profiles = msg or profiles
-                        yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': profiles, 'candidates': []}, default=str)}\n\n"
-                    elif isinstance(msg, dict):
-                        if msg.get("step"):
-                            yield f"data: {json.dumps({'pct': msg.get('pct') or 0, 'step': msg.get('step')}, default=str)}\n\n"
-                        if isinstance(msg.get("profile"), dict):
-                            row = msg["profile"]
-                            key = str(row.get("linkedin_profile_url") or row.get("url") or "").split("?")[0].rstrip("/").lower()
-                            replaced = False
-                            for i, prev in enumerate(profiles):
-                                prev_key = str(prev.get("linkedin_profile_url") or prev.get("url") or "").split("?")[0].rstrip("/").lower()
-                                if key and prev_key == key:
-                                    profiles[i] = row
-                                    replaced = True
-                                    break
-                            if not replaced:
-                                profiles.append(row)
-                        if msg.get("done"):
-                            sent_done = True
-                            if isinstance(msg.get("profiles"), list) and msg.get("profiles"):
-                                profiles = msg["profiles"]
-                            yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': profiles, 'candidates': []}, default=str)}\n\n"
-                code = proc.wait(timeout=5)
-                if not sent_done:
-                    sent_done = True
-                    with _linkedin_search_lock:
-                        cancelled = _linkedin_search_proc is None
-                    if cancelled:
-                        yield f"data: {json.dumps({'done': True, 'ok': True, 'cancelled': True, 'candidates': [], 'profiles': []})}\n\n"
-                    elif code not in (0, None):
-                        yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': profiles or stored, 'candidates': []}, default=str)}\n\n"
-                    else:
-                        yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': profiles or stored, 'candidates': []}, default=str)}\n\n"
-            except Exception as exc:
-                _kill_process_tree(proc)
-                if not sent_done:
-                    yield f"data: {json.dumps({'done': True, 'ok': True, 'cached': True, 'profiles': stored, 'candidates': []}, default=str)}\n\n"
-            finally:
-                if proc.poll() is None:
-                    _kill_process_tree(proc)
-                with _linkedin_search_lock:
-                    if _linkedin_search_proc is proc:
-                        _linkedin_search_proc = None
-
-        return Response(stream_with_context(cached_visuals()), mimetype="text/event-stream", headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        })
     script = _LI_SEARCH.format(
         lf_root=str(LEAD_FINDER_DIR).replace("\\", "\\\\")
     )

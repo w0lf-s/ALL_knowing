@@ -132,24 +132,37 @@ function setLoading(id, on, text) {
         if (span) span.textContent = text;
     }
 }
+function linkedinSnapshot() {
+    const li = state.linkedin || {};
+    const stripVisual = (item) => {
+        if (!item || typeof item !== 'object') return item;
+        const copy = { ...item };
+        delete copy.photo;
+        delete copy.banner;
+        delete copy.shot;
+        return copy;
+    };
+    return {
+        name: li.name || '',
+        company: li.company || '',
+        role: li.role || '',
+        location: li.location || '',
+        email: li.email || '',
+        phone: li.phone || '',
+        url: li.url || '',
+        profiles: (li.profiles || []).map(stripVisual),
+        candidateUrls: li.candidateUrls || [],
+        candidates: (li.candidates || []).map(stripVisual),
+        searched: !!li.searched,
+        matchesOpen: li.matchesOpen !== false,
+    };
+}
 function saveState() {
     try {
         const snapshot = {
             tab: state.tab,
             company: state.company,
-            linkedin: {
-                name: '',
-                company: '',
-                role: '',
-                location: '',
-                email: '',
-                phone: '',
-                url: '',
-                profiles: [],
-                candidateUrls: [],
-                candidates: [],
-                searched: false,
-            },
+            linkedin: linkedinSnapshot(),
             reports: state.reports,
             bookmarks: state.bookmarks || [],
             leads: state.leads.map(lead => ({
@@ -219,6 +232,18 @@ function loadState() {
         if (parsed.tab) state.tab = parsed.tab === 'linkedin' ? 'people' : parsed.tab;
         if (parsed.reports) state.reports = parsed.reports;
         if (Array.isArray(parsed.bookmarks)) state.bookmarks = parsed.bookmarks;
+        if (parsed.linkedin) {
+            state.linkedin = {
+                ...state.linkedin,
+                ...parsed.linkedin,
+                searching: false,
+                scraping: false,
+                progressPct: 0,
+                progressStep: '',
+                scrapePct: 0,
+                scrapeStep: '',
+            };
+        }
     } catch (_) {}
 }
 function applyWorkspace(data) {
@@ -1532,8 +1557,8 @@ async function scrapeLinkedInCandidates(onlyUrl) {
     function mergeProfile(row) {
         if (!row) return;
         const vis = candidateVisualForUrl(row.linkedin_profile_url || row.url);
-        if (!row.photo && vis.photo) row.photo = vis.photo;
-        if (!row.banner && vis.banner) row.banner = vis.banner;
+        if (!row.photo && vis.photo && !row.from_cache) row.photo = vis.photo;
+        if (!row.banner && vis.banner && !row.from_cache) row.banner = vis.banner;
         const key = String(row.linkedin_profile_url || row.url || '').split('?')[0].replace(/\/$/, '').toLowerCase();
         if (!key) {
             state.linkedin.profiles = (state.linkedin.profiles || []).concat([row]);
@@ -2063,24 +2088,18 @@ $('people-form').addEventListener('submit', async (e) => {
                 max_profiles: 10,
             }, controller.signal);
             if (activePeopleSearch.stopped) return;
-            if (found.profiles && found.profiles.length) {
-                state.linkedin.profiles = found.profiles;
-                state.linkedin.candidates = [];
-                state.linkedin.candidateUrls = [];
-            } else {
-                state.linkedin.candidates = filterPeopleCandidates(
-                    found.candidates || [],
-                    fields.name || fields.email,
-                    profileUrl
-                );
-                state.linkedin.candidateUrls = state.linkedin.candidates.map(c => c.url);
-                state.linkedin.profiles = [];
-                if (!state.linkedin.candidates.length && (fields.email || fields.phone || fields.company)) {
-                    applyPeopleSearchProgress(90, 'Checking public contact pages...');
-                    const enriched = await postJson('/api/people/enrich', hints, controller.signal);
-                    if (activePeopleSearch.stopped) return;
-                    if (enriched.profile) state.linkedin.profiles = [enriched.profile];
-                }
+            state.linkedin.candidates = filterPeopleCandidates(
+                found.candidates || [],
+                fields.name || fields.email,
+                profileUrl
+            );
+            state.linkedin.candidateUrls = state.linkedin.candidates.map(c => c.url);
+            state.linkedin.profiles = [];
+            if (!state.linkedin.candidates.length && (fields.email || fields.phone || fields.company)) {
+                applyPeopleSearchProgress(90, 'Checking public contact pages...');
+                const enriched = await postJson('/api/people/enrich', hints, controller.signal);
+                if (activePeopleSearch.stopped) return;
+                if (enriched.profile) state.linkedin.profiles = [enriched.profile];
             }
         }
         if (activePeopleSearch.stopped) return;

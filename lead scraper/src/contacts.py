@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import unquote, urljoin, parse_qs, urlparse
 
 import httpx
 
@@ -230,15 +230,64 @@ def _emails_in_text(html: str) -> list[str]:
     return emails
 
 
+PHONE_SOURCE_PRIORITY = {
+    "entered": 0,
+    "profile_link": 1,
+    "linkedin": 2,
+    "github": 3,
+    "saved": 4,
+    "company_site": 5,
+}
+
+
+def _pick_primary_phone(entries: list[dict[str, str]]) -> str | None:
+    ranked = sorted(
+        entries,
+        key=lambda item: (
+            PHONE_SOURCE_PRIORITY.get(str(item.get("source") or "").lower(), 99),
+            0 if str(item.get("value") or "").startswith("+") else 1,
+            -len(_phone_key(item.get("value") or "")),
+            _phone_key(item.get("value") or ""),
+        ),
+    )
+    for item in ranked:
+        value = _clean_phone(item.get("value") or "")
+        if value:
+            return value
+    return None
+
+
+def _phone_from_tel(href_raw: str, text_raw: str = "") -> str | None:
+    href_phone = _clean_phone(unquote(href_raw.split("?")[0]))
+    text_phone = _clean_phone(text_raw)
+    if text_phone and href_phone and _phone_key(text_phone) != _phone_key(href_phone):
+        return text_phone
+    return text_phone or href_phone
+
+
 def _extract_from_html(html: str) -> tuple[list[str], list[str]]:
     emails = []
     phones = []
+    seen_tel_hrefs: set[str] = set()
     for href in re.findall(r"mailto:([^\"'\s>]+)", html or "", re.I):
         cleaned = _clean_email(unquote(href.split("?")[0]))
         if cleaned and cleaned not in emails:
             emails.append(cleaned)
+    for match in re.finditer(
+        r'<a[^>]+href=["\']tel:([^"\']+)["\'][^>]*>(.*?)</a>',
+        html or "",
+        re.I | re.S,
+    ):
+        href_raw = match.group(1)
+        seen_tel_hrefs.add(unquote(href_raw.split("?")[0]).strip().lower())
+        cleaned = _phone_from_tel(href_raw, re.sub(r"<[^>]+>", "", match.group(2)))
+        if cleaned and cleaned not in phones:
+            phones.append(cleaned)
     for href in re.findall(r"tel:([^\"'\s>]+)", html or "", re.I):
-        cleaned = _clean_phone(unquote(href))
+        href_key = unquote(href.split("?")[0]).strip().lower()
+        if href_key in seen_tel_hrefs:
+            continue
+        cleaned = _phone_from_tel(href, "")
         if cleaned and cleaned not in phones:
             phones.append(cleaned)
     return emails, phones
@@ -329,11 +378,46 @@ def _iter_urls(row: dict[str, Any]) -> list[str]:
     return out
 
 
+def _unwrap_link(url: str) -> str:
+    cleaned = str(url or "").replace("&amp;", "&").strip()
+    lower = cleaned.lower()
+    if any(
+        marker in lower
+        for marker in (
+            "linkedin.com/redir/redirect",
+            "linkedin.com/safety/go",
+            "linkedin.com/redir/unauthorized-redirect",
+        )
+    ):
+        query = parse_qs(urlparse(cleaned).query)
+        for key in ("url", "URL", "to", "dest", "destination"):
+            target = query.get(key)
+            if target:
+                return unquote(unquote(target[0])).strip()
+    return cleaned
+
+
+def _is_linkedin_profile_url(url: str) -> bool:
+    resolved = _unwrap_link(url).lower()
+    if "linkedin.com/in/" in resolved and "/overlay/" not in resolved:
+        return True
+    if "lnkd.in/" in resolved:
+        return True
+    return False
+
+
 def _link_urls(row: dict[str, Any]) -> list[str]:
     out = []
+    skipped = []
     for url in _iter_urls(row):
-        host = (urlparse(url).netloc or "").lower()
+        resolved = _unwrap_link(url)
+        host = (urlparse(resolved).netloc or "").lower()
+        path = (urlparse(resolved).path or "").lower()
+        if _is_linkedin_profile_url(url):
+            skipped.append({"host": host[:60], "reason": "linkedin_profile", "pathHasIn": "/in/" in path})
+            continue
         if any(s in host for s in SKIP_HOST):
+            skipped.append({"host": host[:60], "pathHasIn": "/in/" in path})
             continue
         if url not in out:
             out.append(url)
@@ -478,7 +562,7 @@ def _probe_company_site(client: httpx.Client, company: str) -> str | None:
 
 
 def _ingest_saved(
-    saved: dict[str, Any], name: str
+    saved: dict[str, Any], name: str, *, rescan_links: bool = False
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     emails: list[dict[str, str]] = []
     phones: list[dict[str, str]] = []
@@ -499,16 +583,21 @@ def _ingest_saved(
             if not value or not _email_matches_name(value, name):
                 continue
         _add_email(emails, item.get("value") or "", src or "saved")
-    for item in _as_list(profile.get("phone_entries")):
-        if not isinstance(item, dict):
-            continue
-        src = str(item.get("source") or "").strip().lower()
-        if src in ("guessed", "guess", "company_site"):
-            continue
-        _add_phone(phones, item.get("value") or "", src or "saved")
+    if not rescan_links:
+        for item in _as_list(profile.get("phone_entries")):
+            if not isinstance(item, dict):
+                continue
+            src = str(item.get("source") or "").strip().lower()
+            if src in ("guessed", "guess", "company_site", "profile_link"):
+                continue
+            _add_phone(phones, item.get("value") or "", src or "saved")
     for item in _as_list(profile.get("company_email_entries")):
         if isinstance(item, dict):
-            _add_email(company_emails, item.get("value") or "", str(item.get("source") or "company_site"))
+            src = str(item.get("source") or "company_site").strip().lower()
+            value = _clean_email(item.get("value") or "")
+            if src == "profile_link" and value and _is_generic_email(value) and not _email_matches_name(value, name):
+                continue
+            _add_email(company_emails, item.get("value") or "", src or "company_site")
         else:
             _add_email(company_emails, str(item), "company_site")
     for item in _as_list(profile.get("company_phone_entries")):
@@ -528,10 +617,6 @@ def _ingest_saved(
             _add_email(company_emails, cleaned, "company_site")
         else:
             _add_email(emails, saved.get("email") or "", "saved")
-    if not phones:
-        for item in _as_list(saved.get("phones")):
-            _add_phone(phones, str(item), "saved")
-        _add_phone(phones, saved.get("phone") or "", "saved")
     return emails, phones, company_emails, company_phones
 
 
@@ -644,15 +729,17 @@ def enrich_profile(row: dict[str, Any], hints: dict[str, Any] | None = None) -> 
     saved = _saved_person(row) or {}
     name = str(row.get("name") or "")
     company = str(row.get("current_company") or "")
-    emails, phones, company_emails, company_phones = _ingest_saved(saved, name)
+    rescan_links = bool(_link_urls(row))
+    emails, phones, company_emails, company_phones = _ingest_saved(saved, name, rescan_links=rescan_links)
     row["email"] = _clean_email(row.get("email") or "")
-    row["phone"] = _clean_phone(row.get("phone") or "")
+    linkedin_phone = None if row.get("from_cache") else _clean_phone(row.get("phone") or "")
+    row["phone"] = linkedin_phone
     if row.get("email") and _is_generic_email(str(row.get("email"))):
         _add_email(company_emails, row.get("email") or "", "company_site")
         row["email"] = None
     else:
         _add_email(emails, row.get("email") or "", "linkedin")
-    _add_phone(phones, row.get("phone") or "", "linkedin")
+    _add_phone(phones, linkedin_phone or "", "linkedin")
     entered_email = _clean_email(hints.get("email") or "")
     entered_phone = _clean_phone(hints.get("phone") or "")
     _add_email(emails, entered_email or "", "entered")
@@ -684,7 +771,10 @@ def enrich_profile(row: dict[str, Any], hints: dict[str, Any] | None = None) -> 
             company_page = bool(site and _origin(url) == _origin(site)) or _host_matches_company(url, company)
             for item in found_e:
                 if _is_generic_email(item):
-                    _add_email(company_emails, item, "company_site" if company_page else "profile_link")
+                    if company_page:
+                        _add_email(company_emails, item, "company_site")
+                    elif _email_matches_name(item, name):
+                        _add_email(emails, item, "profile_link")
                 else:
                     _add_email(emails, item, "profile_link")
             for item in found_p:
@@ -700,7 +790,10 @@ def enrich_profile(row: dict[str, Any], hints: dict[str, Any] | None = None) -> 
     personal = [e["value"] for e in emails if not _is_generic_email(e["value"])]
     if not row.get("email") and personal:
         row["email"] = personal[0]
-    if not row.get("phone") and phones:
+    picked_phone = _pick_primary_phone(phones)
+    if picked_phone:
+        row["phone"] = picked_phone
+    elif not row.get("phone") and phones:
         row["phone"] = phones[0]["value"]
     row["emails"] = [item["value"] for item in emails]
     row["phones"] = [item["value"] for item in phones]

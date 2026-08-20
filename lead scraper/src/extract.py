@@ -518,17 +518,19 @@ def _is_outbound_profile_link(href: str) -> bool:
     lower = raw.lower()
     if not lower or lower.startswith(("mailto:", "tel:", "javascript:", "#")):
         return False
-    if any(
+    is_redirect = any(
         marker in lower
         for marker in (
             "linkedin.com/redir/redirect",
             "linkedin.com/safety/go",
             "linkedin.com/redir/unauthorized-redirect",
         )
-    ):
-        return True
+    )
     unwrapped = _unwrap_href(raw)
     lower_unwrapped = unwrapped.lower()
+    unwrap_is_linkedin = "linkedin.com" in lower_unwrapped or "lnkd.in" in lower_unwrapped
+    if is_redirect:
+        return not unwrap_is_linkedin
     if lower_unwrapped.startswith(("http://", "https://")):
         return "linkedin.com" not in lower_unwrapped and "lnkd.in" not in lower_unwrapped
     if re.fullmatch(
@@ -1093,7 +1095,7 @@ _IMAGE_URLS_JS = """() => {
             const u = urlFromImg(img);
             if (!u) return;
             const r = img.getBoundingClientRect();
-            if (r.width < 24 || r.height < 24) return;
+            if (r.width < 72 || r.height < 72) return;
             candidates.push({ sel, url: u, x: r.x, y: r.y, w: r.width, h: r.height });
         };
 
@@ -1145,15 +1147,32 @@ _IMAGE_URLS_JS = """() => {
         }
         if (best) return best;
 
-        if (!h1R) return '';
-        for (const img of top.querySelectorAll('img[src*="profile-displayphoto"], img[srcset*="profile-displayphoto"]')) {
-            const r = img.getBoundingClientRect();
-            const fake = { y: r.y, h: r.height, w: r.width };
-            if (!accept(fake)) continue;
-            if (r.width < 24 || r.height < 24) continue;
-            const u = urlFromImg(img);
-            if (u) return u;
+        if (h1R) {
+            for (const img of top.querySelectorAll('img[src*="profile-displayphoto"], img[srcset*="profile-displayphoto"]')) {
+                const r = img.getBoundingClientRect();
+                const fake = { y: r.y, h: r.height, w: r.width };
+                if (!accept(fake)) continue;
+                if (r.width < 72 || r.height < 72) continue;
+                const u = urlFromImg(img);
+                if (u) return u;
+            }
         }
+
+        const main = document.querySelector('main') || document.body;
+        let bestLoose = '';
+        let bestLooseArea = 0;
+        for (const img of main.querySelectorAll('img[src*="profile-displayphoto"], img[srcset*="profile-displayphoto"], img[data-delayed-url*="profile-displayphoto"]')) {
+            const r = img.getBoundingClientRect();
+            if (r.width < 48 || r.height < 48 || r.top > 920) continue;
+            const u = urlFromImg(img);
+            if (!u) continue;
+            const area = r.width * r.height;
+            if (area > bestLooseArea) {
+                bestLoose = u;
+                bestLooseArea = area;
+            }
+        }
+        if (bestLoose) return bestLoose;
         return '';
     };
     const pickBanner = () => {
@@ -1293,15 +1312,25 @@ def _banner_clip_shot(page: Page) -> str | None:
 
 def _photo_screenshot(page: Page) -> str | None:
     for sel in (
+        "button.pv-top-card-profile-picture",
         "button.pv-top-card-profile-picture img",
         "img.pv-top-card-profile-picture__image",
         ".pv-top-card-profile-picture img",
         ".pv-top-card-profile-picture__container img",
         "div.pv-top-card__photo-wrapper img",
+        "button[aria-label*='photo' i] img",
+        "main img[src*='profile-displayphoto']",
     ):
         try:
             loc = page.locator(sel).first
             if loc.count() == 0:
+                continue
+            box = loc.bounding_box()
+            min_side = 48 if "button" in sel else 56
+            if not box or box["width"] < min_side or box["height"] < min_side:
+                continue
+            src = (loc.get_attribute("src") or loc.get_attribute("srcset") or "") + (loc.get_attribute("data-delayed-url") or "")
+            if re.search(r"ghost|sprite|emoji|static\.licdn\.com/aero", src, re.I):
                 continue
             loc.scroll_into_view_if_needed(timeout=2000)
             page.wait_for_timeout(300)
@@ -1310,16 +1339,6 @@ def _photo_screenshot(page: Page) -> str | None:
                 return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
         except Exception:
             continue
-    try:
-        loc = page.locator("main img[src*='profile-displayphoto']").first
-        if loc.count():
-            box = loc.bounding_box()
-            if box and box["y"] < 500 and box["width"] >= 40:
-                raw = loc.screenshot(type="jpeg", quality=80)
-                if raw and len(raw) > 500:
-                    return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
-    except Exception:
-        pass
     return None
 
 
@@ -1331,7 +1350,7 @@ def _extract_profile_images(page: Page, data: dict[str, Any]) -> None:
         pass
     try:
         page.wait_for_selector(
-            "img.pv-top-card-profile-picture__image, button.pv-top-card-profile-picture img, img[src*='profile-displayphoto']",
+            "main h1, h1.text-heading-xlarge, .pv-top-card-profile-picture, button.pv-top-card-profile-picture",
             timeout=5000 if _fast() else 8000,
         )
         page.wait_for_timeout(300 if _fast() else 600)

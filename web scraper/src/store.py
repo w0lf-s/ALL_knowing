@@ -13,6 +13,16 @@ from src.paths import BOOKMARKS_PATH, CACHE, COMPANY_DIR, NEWS_DIR, PEOPLE_DIR, 
 _client = None
 _client_checked = False
 NEWS_TTL_S = 24 * 3600
+_VISUAL_KEYS = ("photo", "banner", "shot")
+
+
+def _strip_visual_fields(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return item
+    out = dict(item)
+    for key in _VISUAL_KEYS:
+        out.pop(key, None)
+    return out
 
 
 def news_is_fresh(fetched_at: Any) -> bool:
@@ -643,6 +653,8 @@ def get_workspace() -> dict[str, Any]:
 def _workspace_linkedin(linkedin: Any) -> dict[str, Any]:
     if not isinstance(linkedin, dict):
         return {}
+    profiles = linkedin.get("profiles") if isinstance(linkedin.get("profiles"), list) else []
+    candidates = linkedin.get("candidates") if isinstance(linkedin.get("candidates"), list) else []
     return {
         "url": linkedin.get("url") or "",
         "name": linkedin.get("name") or "",
@@ -651,9 +663,9 @@ def _workspace_linkedin(linkedin: Any) -> dict[str, Any]:
         "location": linkedin.get("location") or "",
         "email": linkedin.get("email") or "",
         "phone": linkedin.get("phone") or "",
-        "profiles": linkedin.get("profiles") if isinstance(linkedin.get("profiles"), list) else [],
+        "profiles": [_strip_visual_fields(item) for item in profiles if isinstance(item, dict)],
         "candidateUrls": linkedin.get("candidateUrls") if isinstance(linkedin.get("candidateUrls"), list) else [],
-        "candidates": linkedin.get("candidates") if isinstance(linkedin.get("candidates"), list) else [],
+        "candidates": [_strip_visual_fields(item) for item in candidates if isinstance(item, dict)],
         "searched": bool(linkedin.get("searched")),
     }
 
@@ -1059,10 +1071,8 @@ def upsert_person(record: dict[str, Any]) -> dict[str, Any]:
         if value in (None, "", []):
             continue
         profile[field] = value
+    profile = _strip_visual_fields(profile)
     profile.pop("guessed_emails", None)
-    profile.pop("photo", None)
-    profile.pop("banner", None)
-    profile.pop("shot", None)
     profile["email_entries"] = email_entries
     profile["phone_entries"] = phone_entries
     profile["company_email_entries"] = company_email_entries

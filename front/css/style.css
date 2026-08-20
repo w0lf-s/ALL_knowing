@@ -847,7 +847,7 @@ a.link:hover {
 table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed;
+    table-layout: auto;
 }
 
 table th, table td {
@@ -860,8 +860,9 @@ table th, table td {
 table th {
     color: var(--accent-light);
     font-weight: 600;
-    width: 10rem;
+    width: 1%;
     white-space: nowrap;
+    padding-right: 1.25rem;
 }
 
 table td {

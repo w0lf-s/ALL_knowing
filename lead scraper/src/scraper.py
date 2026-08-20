@@ -54,10 +54,11 @@ def run(
             payload["profile"] = row
         on_progress(payload)
 
-    playwright = open_playwright()
+    playwright = None
     browser = None
     visits = 0
     try:
+        playwright = open_playwright()
         browser, context = create_authenticated_context(playwright, settings)
         if settings.headless:
             settings.delay_min_seconds = min(float(settings.delay_min_seconds), 0.6)
@@ -74,6 +75,8 @@ def run(
                     hit["photo"] = vis.get("photo")
                 if vis.get("banner"):
                     hit["banner"] = vis.get("banner")
+                emit(index, f"Checking public contact pages {index + 1} of {total}", pct=start_pct)
+                hit = enrich_profile(hit, hints=hints)
                 results[index] = hit
                 emit(index, f"Finished profile {index + 1} of {total}", hit)
             else:
@@ -86,16 +89,17 @@ def run(
                 emit(index, f"Finished profile {index + 1} of {total}", row)
                 if row.get("error") == "auth_required":
                     raise RuntimeError(f"Authentication required while visiting {url}")
-            visits += 1
-            if visits < total:
-                delay = random.uniform(
-                    settings.delay_min_seconds, settings.delay_max_seconds
-                )
-                time.sleep(delay)
+                visits += 1
+                if visits < sum(1 for item in saved if not item):
+                    delay = random.uniform(
+                        settings.delay_min_seconds, settings.delay_max_seconds
+                    )
+                    time.sleep(delay)
         context.close()
     finally:
         if browser is not None:
             browser.close()
-        playwright.stop()
+        if playwright is not None:
+            playwright.stop()
 
     return [row for row in results if isinstance(row, dict)]
