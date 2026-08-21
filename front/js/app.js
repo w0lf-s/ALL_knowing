@@ -78,6 +78,9 @@ function showError(el, msg) {
 function peopleSearchError(msg) {
     const raw = String(msg || '');
     const low = raw.toLowerCase();
+    if (/linkedin\.com\/login|\/uas\/login|\/checkpoint|\/authwall|linkedin login did not finish|sign in manually|linkedin_email|linkedin_password|auth.?required/.test(low)) {
+        return 'LinkedIn login required. Set HEADLESS=0 in not to share/.env, restart the server, sign in in the browser window (including 2FA if asked), then try again.';
+    }
     if (/navigating to|waiting until|timeout \d+ms exceeded|={5,}|net::err/.test(low)) {
         return 'LinkedIn took too long to load. Try again.';
     }
@@ -1580,7 +1583,7 @@ async function scrapeLinkedInCandidates(onlyUrl) {
         activeLinkedinScrape.controller = null;
         activeLinkedinScrape.source = null;
         activeLinkedinScrape.finish = null;
-        if (err && !activeLinkedinScrape.stopped) showError($('people-error'), err);
+        if (err && !activeLinkedinScrape.stopped) showError($('people-error'), peopleSearchError(err));
         state.linkedin.scraping = false;
         state.linkedin.scrapePct = 0;
         state.linkedin.scrapeStep = '';

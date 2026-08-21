@@ -57,6 +57,23 @@ def _friendly_cli_error(stderr: str, stdout: str, fallback: str) -> str:
     if any(
         token in low
         for token in (
+            "linkedin.com/login",
+            "/uas/login",
+            "/checkpoint",
+            "/authwall",
+            "linkedin login did not finish",
+            "sign in manually",
+            "linkedin_email",
+            "linkedin_password",
+        )
+    ) or ("auth" in low and ("required" in low or "checkpoint" in low or "login" in low)):
+        return (
+            "LinkedIn login required. Set HEADLESS=0 in not to share/.env, restart the server, "
+            "sign in in the browser window (including 2FA if asked), then try again."
+        )
+    if any(
+        token in low
+        for token in (
             "navigating to",
             "waiting until",
             "timeout",
@@ -67,8 +84,6 @@ def _friendly_cli_error(stderr: str, stdout: str, fallback: str) -> str:
         return "LinkedIn took too long to load. Try again."
     if "target closed" in low or "browser has been closed" in low:
         return "The LinkedIn browser closed before search finished. Try again."
-    if "auth" in low and ("required" in low or "checkpoint" in low or "login" in low):
-        return "LinkedIn needs a login. Sign in with the saved session and try again."
     for line in reversed(blob.splitlines()):
         text = line.strip()
         if not text:
@@ -192,8 +207,12 @@ settings.delay_min_seconds = min(settings.delay_min_seconds, 0.6)
 settings.delay_max_seconds = min(settings.delay_max_seconds, 1.2)
 def _emit(obj):
     print(json.dumps(obj, default=str), flush=True)
-rows = run(settings, on_progress=_emit, urls=urls, hints=hints)
-print(json.dumps(rows or [], default=str), flush=True)
+try:
+    rows = run(settings, on_progress=_emit, urls=urls, hints=hints)
+    print(json.dumps(rows or [], default=str), flush=True)
+except Exception as exc:
+    _emit({{"done": True, "error": str(exc)}})
+    raise SystemExit(1)
 """
 
 _LEAD_PARSE = """
@@ -706,6 +725,9 @@ def api_linkedin_stream():
                     sent_done = True
                     yield f"data: {json.dumps({'done': True, 'ok': True, 'profiles': msg}, default=str)}\n\n"
                 elif isinstance(msg, dict):
+                    if msg.get("error"):
+                        msg = dict(msg)
+                        msg["error"] = _friendly_cli_error(str(msg.get("error") or ""), "", "People lookup failed")
                     if msg.get("done"):
                         sent_done = True
                     yield f"data: {json.dumps(msg, default=str)}\n\n"
@@ -714,7 +736,7 @@ def api_linkedin_stream():
                 sent_done = True
                 if code not in (0, None):
                     err = (proc.stderr.read() if proc.stderr else "") or "People lookup failed"
-                    yield f"data: {json.dumps({'done': True, 'error': err.strip().splitlines()[-1] if err.strip() else 'People lookup failed'})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'error': _friendly_cli_error(err, '', 'People lookup failed')})}\n\n"
                 else:
                     yield f"data: {json.dumps({'done': True, 'ok': True})}\n\n"
         except Exception as exc:
@@ -813,6 +835,9 @@ def api_linkedin_search():
                 except Exception:
                     continue
                 if isinstance(msg, dict):
+                    if msg.get("error"):
+                        msg = dict(msg)
+                        msg["error"] = _friendly_cli_error(str(msg.get("error") or ""), "", "LinkedIn search failed")
                     if msg.get("done"):
                         sent_done = True
                     yield f"data: {json.dumps(msg, default=str)}\n\n"
